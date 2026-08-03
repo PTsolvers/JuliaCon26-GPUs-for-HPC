@@ -28,7 +28,7 @@ function CahnHilliard2D()
     D      = 1.0
     w      = 0.03           # interface width  ->  ~11 features across the box
     γ      = w^2 / 8
-    C̄      = 0.4            # conserved mean: 0 -> bicontinuous, ±0.4 -> droplets
+    C̄      = 0.0            # conserved mean: 0 -> bicontinuous, ±0.4 -> droplets
     ampl   = 0.02           # initial noise amplitude
     # numerics
     nx, ny = 128, 128
