@@ -13,17 +13,17 @@ const backend = CPU()
            (A[ix, min(iy+1, ny)] - 2a + A[ix, max(iy-1, 1)])
 end
 
-@kernel inbounds = true function memcopy!(A, B)
+@kernel inbounds = true function k_memcopy!(A, B)
     ix, iy = @index(Global, NTuple)
     A[ix, iy] = B[ix, iy]
 end
 
-@kernel inbounds = true function saxpy!(A, B, C, s)
+@kernel inbounds = true function k_saxpy!(A, B, C, s)
     ix, iy = @index(Global, NTuple)
     A[ix, iy] = B[ix, iy] + s * C[ix, iy]
 end
 
-@kernel inbounds = true function diffusion!(C2, C, dtD)
+@kernel inbounds = true function k_diffusion!(C2, C, dtD)
     ix, iy = @index(Global, NTuple)
     nx, ny = size(C)
     C2[ix, iy] = C[ix, iy] + dtD * lap(C, ix, iy, nx, ny)
@@ -58,9 +58,9 @@ function memcopy_bench(; ns=(512, 1024, 2048))
         B = KernelAbstractions.zeros(backend, Float64, n, n)
         C = KernelAbstractions.zeros(backend, Float64, n, n)
         for (nm, k, args, narr) in (
-                ("memcopy   [2]", memcopy!(backend, 256, (n, n)),   (A, B),         2),
-                ("saxpy     [3]", saxpy!(backend, 256, (n, n)),     (A, B, C, 2.0), 3),
-                ("diffusion [2]", diffusion!(backend, 256, (n, n)), (A, B, 0.125),  2))
+                ("memcopy   [2]", k_memcopy!(backend, 256, (n, n)),   (A, B),         2),
+                ("saxpy     [3]", k_saxpy!(backend, 256, (n, n)),     (A, B, C, 2.0), 3),
+                ("diffusion [2]", k_diffusion!(backend, 256, (n, n)), (A, B, 0.125),  2))
             t = bench(k, args)
             @printf("%-8s %-20s %-12.4f %-14.1f\n",
                     nm == "memcopy   [2]" ? string(n) : "", nm, t*1e3, Teff(narr, n, n, t))
@@ -79,7 +79,7 @@ function diffusion2D(; nx=512, ny=512, nt=2000, do_visu=true)
     C   = KernelAbstractions.allocate(backend, Float64, nx, ny); copyto!(C, C_h)
     C2  = KernelAbstractions.zeros(backend, Float64, nx, ny)
     m0  = sum(C_h)                              # no-flux BCs => mass is conserved
-    kdiff = diffusion!(backend, 256, (nx, ny))  # static ndrange
+    kdiff = k_diffusion!(backend, 256, (nx, ny))  # static ndrange
     # time loop
     KernelAbstractions.synchronize(backend)
     nwarm = 10; t_tic = 0.0
@@ -93,7 +93,7 @@ function diffusion2D(; nx=512, ny=512, nt=2000, do_visu=true)
     A_eff = 2 * nx * ny * sizeof(Float64)
     @printf("t_it = %.3f ms   T_eff = %.1f GB/s\n", t_it*1e3, A_eff/t_it/1e9)
     copyto!(C_h, C)
-    @printf("Δmass/mass = %+.2e (no-flux => conserved)\n", (sum(C_h) - m0)/m0)
+    @printf("Δmean = %+.2e (no-flux => conserved)\n", (sum(C_h) - m0)/(nx*ny))
     # visu
     if do_visu
         fig = Figure(; size=(600, 500))

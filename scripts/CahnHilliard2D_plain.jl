@@ -72,8 +72,8 @@ function CahnHilliard2D_plain(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=tr
         if do_visu && it % nvis == 0
             t_visu_tic = time()          # keep diagnostics out of the timing
             F, m = check(C, γ)
-            @printf("> step %6d, t = %8.2f, F = %.6g, Δmass/mass = %+.2e\n",
-                    it, it*dt, F, (m - m0)/m0)
+            @printf("> step %6d, t = %8.2f, F = %.6g, Δmean = %+.2e\n",
+                    it, it*dt, F, (m - m0)/(nx*ny))
             push!(Fs, Point2f(it*dt, F))
             axs[1].title = @sprintf("C   t = %.1f   F = %.4g", it*dt, F)
             plt[1][3] = C                           # heatmap data
@@ -88,7 +88,7 @@ function CahnHilliard2D_plain(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=tr
     @printf("\nt_it = %.3f ms   T_eff = %.1f GB/s   total %.1f s\n",
             t_it*1e3, A_eff/t_it/1e9, t_it*(nt - nwarm))
     F, m = check(C, γ)
-    @printf("F: %.6g -> %.6g (must decrease)   Δmass/mass = %+.2e\n", F0, F, (m - m0)/m0)
+    @printf("F: %.6g -> %.6g (must decrease)   Δmean = %+.2e\n", F0, F, (m - m0)/(nx*ny))
     return
 end
 

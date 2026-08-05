@@ -5,7 +5,7 @@ using Random, Statistics, Printf, CairoMakie
 
 # ---- backend: uncomment one ----
 using Metal;  const backend = MetalBackend(); const FT = Float32  # Apple GPU (no Float64)
-# using CUDA; const backend = CUDABackend();  const FT = Float64  # NVIDIA
+# using CUDA;   const backend = CUDABackend();  const FT = Float64  # NVIDIA
 # const backend = CPU();                      const FT = Float64  # CPU reference
 
 # no-flux (∂n = 0) through the ghost-node mirror A[0]->A[1], A[n+1]->A[n].
@@ -17,7 +17,7 @@ using Metal;  const backend = MetalBackend(); const FT = Float32  # Apple GPU (n
 end
 
 # kernel 1: chemical potential μ = C³ - C - γ∇²C   (∇²C stays in registers)
-@kernel inbounds = true function chemical_potential!(μ, C, γ)
+@kernel inbounds = true function k_chemical_potential!(μ, C, γ)
     ix, iy = @index(Global, NTuple)
     nx, ny = size(C)
     c = C[ix, iy]
@@ -25,7 +25,7 @@ end
 end
 
 # kernel 2: concentration update C += dt·D·∇²μ     (∇²μ stays in registers)
-@kernel inbounds = true function update_concentration!(C, μ, dtD)
+@kernel inbounds = true function k_update_concentration!(C, μ, dtD)
     ix, iy = @index(Global, NTuple)
     nx, ny = size(C)
     C[ix, iy] += dtD * lap(μ, ix, iy, nx, ny)
@@ -42,7 +42,7 @@ backend_info() = backend isa CPU ? "CPU ($(Threads.nthreads()) threads)" :
     return F, sum(C)
 end
 
-function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true, fast=true)
+function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true)
     # physics (grid units)
     D     = FT(1.0)
     wcell = FT(4.0)                  # interface width, in cells -- resolve with >= 4
@@ -63,8 +63,8 @@ function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true,
     μ      = KernelAbstractions.zeros(backend, FT, nx, ny)
     F0, m0 = check(C_h, γ)
     # kernel objects
-    kμ = chemical_potential!(backend, 256, (nx, ny))    # static ndrange
-    kC = update_concentration!(backend, 256, (nx, ny))
+    kμ = k_chemical_potential!(backend, 256, (nx, ny))    # static ndrange
+    kC = k_update_concentration!(backend, 256, (nx, ny))
     # visu
     if do_visu
         fig = Figure(; size=(600, 800))
@@ -88,8 +88,8 @@ function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true,
             t_visu_tic = time()          # keep diagnostics out of the timing
             copyto!(C_h, C)
             F, m = check(C_h, γ)
-            @printf("> step %6d, t = %8.2f, F = %.6g, Δmass/mass = %+.2e\n",
-                    it, it*dt, F, (m - m0)/m0)
+            @printf("> step %6d, t = %8.2f, F = %.6g, Δmean = %+.2e\n",
+                    it, it*dt, F, (m - m0)/(nx*ny))
             C_v .= C_h                              # Float32 solver -> Float64 plot buffer
             push!(Fs, Point2f(it*dt, F))
             axs[1].title = @sprintf("C   t = %.1f   F = %.4g", it*dt, F)
@@ -106,9 +106,8 @@ function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true,
     @printf("\nt_it = %.3f ms   T_eff = %.1f GB/s   total %.1f s\n",
             t_it*1e3, A_eff/t_it/1e9, t_it*(nt - nwarm))
     copyto!(C_h, C); F, m = check(C_h, γ)
-    @printf("F: %.6g -> %.6g (must decrease)   Δmass/mass = %+.2e\n", F0, F, (m - m0)/m0)
+    @printf("F: %.6g -> %.6g (must decrease)   Δmean = %+.2e\n", F0, F, (m - m0)/(nx*ny))
     return
 end
 
 CahnHilliard2D_KA()
-# CahnHilliard2D_KA(; nx=256, ny=256)
