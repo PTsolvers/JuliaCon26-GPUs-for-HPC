@@ -4,9 +4,9 @@ using KernelAbstractions
 using Random, Statistics, Printf, CairoMakie
 
 # ---- backend: uncomment one ----
-using Metal;  const backend = MetalBackend(); const FT = Float32  # Apple GPU (no Float64)
+const backend = CPU();                      const FT = Float64  # CPU reference
 # using CUDA;   const backend = CUDABackend();  const FT = Float64  # NVIDIA
-# const backend = CPU();                      const FT = Float64  # CPU reference
+# using Metal;  const backend = MetalBackend(); const FT = Float32  # Apple GPU (no Float64)
 
 # no-flux (∂n = 0) through the ghost-node mirror A[0]->A[1], A[n+1]->A[n].
 # min/max make it branchless, so no warp divergence at the boundaries.
