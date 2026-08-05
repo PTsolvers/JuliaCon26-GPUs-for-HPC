@@ -1,13 +1,14 @@
 # 2D memory-throughput reference + linear diffusion (KernelAbstractions.jl).
 # T_eff accounting and the μ = C reduction to diffusion: see README.
-using KernelAbstractions, Printf, CairoMakie
+using KernelAbstractions, Printf, Random, CairoMakie
 
 # ---- backend: uncomment one ----
-const backend = CPU()
-# using CUDA; const backend = CUDABackend()
+# const backend = CPU()
+using CUDA; const backend = CUDABackend()
 
 # no-flux (∂n = 0) ghost-node mirror -- identical to CahnHilliard2D_KA.jl
-@inline function lap(A, ix, iy, nx, ny)
+# @propagate_inbounds to propagate `inbounds = true`.
+Base.@propagate_inbounds function lap(A, ix, iy, nx, ny)
     a = A[ix, iy]
     return (A[min(ix+1, nx), iy] - 2a + A[max(ix-1, 1), iy]) +
            (A[ix, min(iy+1, ny)] - 2a + A[ix, max(iy-1, 1)])
@@ -50,13 +51,13 @@ Teff(narr, nx, ny, t) = narr * nx * ny * sizeof(Float64) / t / 1e9
 backend_info() = backend isa CPU ? "CPU ($(Threads.nthreads()) threads)" :
                                    string(nameof(typeof(backend)))
 
-function memcopy_bench(; ns=(512, 1024, 2048))
+function memcopy_bench(; ns=2 .^ (9:15))    # 512 … 32768, 3 arrays => 25.8 GB at 32768²
     @printf("%s\n\n", backend_info())
     @printf("%-8s %-20s %-12s %-14s\n", "n", "kernel [arrays]", "t_it [ms]", "T_eff [GB/s]")
     for n in ns
-        A = KernelAbstractions.zeros(backend, Float64, n, n)
-        B = KernelAbstractions.zeros(backend, Float64, n, n)
-        C = KernelAbstractions.zeros(backend, Float64, n, n)
+        A = KernelAbstractions.allocate(backend, Float64, n, n); rand!(A)
+        B = KernelAbstractions.allocate(backend, Float64, n, n); rand!(B)
+        C = KernelAbstractions.allocate(backend, Float64, n, n); rand!(C)
         for (nm, k, args, narr) in (
                 ("memcopy   [2]", k_memcopy!(backend, 256, (n, n)),   (A, B),         2),
                 ("saxpy     [3]", k_saxpy!(backend, 256, (n, n)),     (A, B, C, 2.0), 3),
@@ -69,7 +70,7 @@ function memcopy_bench(; ns=(512, 1024, 2048))
     end
 end
 
-function diffusion2D(; nx=512, ny=512, nt=2000, do_visu=true)
+function diffusion2D(; nx=8192, ny=8192, nt=50, do_visu=false)
     D  = 1.0
     dt = 1.0 / D / 4.1
     @printf("%s   nx=%d ny=%d   dt=%.5g\n", backend_info(), nx, ny, dt)
@@ -78,7 +79,7 @@ function diffusion2D(; nx=512, ny=512, nt=2000, do_visu=true)
     C_h = [exp(-((ix - xc)^2 + (iy - yc)^2) / w^2) for ix in 1:nx, iy in 1:ny]
     C   = KernelAbstractions.allocate(backend, Float64, nx, ny); copyto!(C, C_h)
     C2  = KernelAbstractions.zeros(backend, Float64, nx, ny)
-    m0  = sum(C_h)                              # no-flux BCs => mass is conserved
+    m0  = sum(C_h)                                # no-flux BCs => mass is conserved
     kdiff = k_diffusion!(backend, 256, (nx, ny))  # static ndrange
     # time loop
     KernelAbstractions.synchronize(backend)
