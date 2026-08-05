@@ -38,7 +38,7 @@ function CahnHilliard2D_plain(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=tr
     # physics (grid units, dx = dy = 1)
     D     = 1.0
     wcell = 4.0                  # interface width, in cells -- resolve with >= 4
-    γ     = wcell^2 / 8              # = 2
+    γ     = wcell^2 / 8          # = 2
     C̄     = 0.4                  # conserved mean: 0 -> bicontinuous, ±0.4 -> droplets
     ampl  = 0.02                 # initial noise amplitude
     # numerics
