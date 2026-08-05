@@ -2,7 +2,8 @@
 using Random, Statistics, Printf, CairoMakie
 
 # no-flux (∂n = 0) through the ghost-node mirror A[0]->A[1], A[n+1]->A[n]
-@inline function lap(A, ix, iy, nx, ny)
+# @propagate_inbounds, to skip bounds check on lap.
+Base.@propagate_inbounds function lap(A, ix, iy, nx, ny)
     a = A[ix, iy]
     return (A[min(ix+1, nx), iy] - 2a + A[max(ix-1, 1), iy]) +
            (A[ix, min(iy+1, ny)] - 2a + A[ix, max(iy-1, 1)])

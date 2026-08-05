@@ -10,7 +10,8 @@ const backend = CPU();                      const FT = Float64  # CPU reference
 
 # no-flux (∂n = 0) through the ghost-node mirror A[0]->A[1], A[n+1]->A[n].
 # min/max make it branchless, so no warp divergence at the boundaries.
-@inline function lap(A, ix, iy, nx, ny)
+# @propagate_inbounds, to inherit the kernel's `inbounds = true`.
+Base.@propagate_inbounds function lap(A, ix, iy, nx, ny)
     a = A[ix, iy]
     return (A[min(ix+1, nx), iy] - 2a + A[max(ix-1, 1), iy]) +
            (A[ix, min(iy+1, ny)] - 2a + A[ix, max(iy-1, 1)])
