@@ -50,13 +50,36 @@
   producing identical Newton iteration counts.  The two agree to
   `||J − Jfd||_F/||J||_F ≈ 4e-11` (`-snes_test_jacobian`).
 
+  ── Running in parallel: mpiexecjl ───────────────────────────────────────────
+
+  Do **not** use a system `mpiexec` — it will generally belong to a different
+  MPI installation than the one MPI.jl and PETSc_jll are built against, and the
+  ranks then fail to form a communicator (or crash outright, e.g. with a
+  missing `libhwloc` on macOS).
+
+  MPI.jl ships its own launcher for exactly this reason.  Install it once:
+
+      julia --project=. -e 'using MPI; MPI.install_mpiexecjl()'
+
+  which writes `mpiexecjl` into `~/.julia/bin`.  It is a thin wrapper that sets
+  the library paths for the MPI that MPI.jl is configured with, then calls that
+  MPI's real `mpiexec`.  Add `~/.julia/bin` to your PATH, or call it by full
+  path as below.
+
+  Check which MPI binary MPI.jl is configured against with
+
+      julia --project=. -e 'using MPI; println(MPI.MPIPreferences.binary)'
+
+  In this project that reports `MPICH_jll`, which is also what PETSc_jll is
+  built against — so `mpiexecjl` is the correct launcher.
+
   ── Usage ────────────────────────────────────────────────────────────────────
 
     # serial, default 128×128 grid
-    julia --project=. scripts/CahnHilliard2D_PETSc.jl
+    julia --project=. scripts/CahnHilliard2D_PETSc.jl -snes_monitor -snes_converged_reason
 
     # 4 MPI ranks on a 256×256 grid, with solver output
-    mpiexec -n 4 julia --project=. scripts/CahnHilliard2D_PETSc.jl \
+    ~/.julia/bin/mpiexecjl -n 4 julia --project=. scripts/CahnHilliard2D_PETSc.jl \
         -da_grid_x 256 -da_grid_y 256 -snes_monitor -snes_converged_reason
 
     # algebraic multigrid on the coupled system (see "Linear solvers" below —
@@ -128,6 +151,11 @@ opts = PETSc.parse_options(ARGS)
 
 MPI.Initialized() || MPI.Init()
 
+# Start of the total-walltime clock, reported at the end of the run.  This is
+# as early as we can measure: it covers PETSc initialisation, DMDA and coloring
+# setup, JIT compilation of the callbacks, and the time loop itself.
+t_script_start = MPI.Wtime()
+
 # Default linear solver: a sparse direct LU.
 #
 # The mixed (C, μ) system is indefinite and strongly non-symmetric, and the
@@ -154,7 +182,7 @@ opts = merge(
 )
 
 petsclib = PETSc.getlib(; PetscScalar = Float64, PetscInt = Int64)
-PETSc.initialize(petsclib)
+PETSc.initialize(petsclib, log_view=false)
 
 const PetscScalar = petsclib.PetscScalar
 const PetscInt    = petsclib.PetscInt
@@ -737,10 +765,17 @@ end
 # The slowest rank sets the walltime, so reduce with `max`.
 walltime = MPI.Allreduce(MPI.Wtime() - t_start, max, comm)
 
+# Total script walltime: setup (PETSc init, DMDA, coloring, JIT) plus the time
+# loop.  Measured here rather than after the plotting block below, so an
+# interactive run does not include however long the window stays open.
+total_walltime = MPI.Allreduce(MPI.Wtime() - t_script_start, max, comm)
+
 if rank == 0
     println("done: $nt implicit steps, t = $(nt * dt_0)")
-    @printf("walltime  : %.3f s  (%.4f s/step, %d ranks)\n",
+    @printf("walltime  : %.3f s  (%.4f s/step, %d ranks)  [time loop]\n",
             walltime, walltime / nt, nranks)
+    @printf("total     : %.3f s  (incl. %.3f s setup + JIT)\n",
+            total_walltime, total_walltime - walltime)
 end
 
 # Save the final frame and, when run as a script, keep the GLMakie window open
