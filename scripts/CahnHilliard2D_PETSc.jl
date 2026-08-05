@@ -105,9 +105,11 @@
   to much larger problems, not because they win at 257².
 
   Non-PETSc options handled by this script:
-    -nt <n>       number of time steps            (default 100)
+    -t_end <val>  physical end time               (default 2e-2; spinodal
+                                                   decomposition starts ≈8e-3)
     -dt <val>     time step                       (default 2e-4, ~440× the
                                                    explicit stability limit)
+    -nt <n>       step count; overrides the value derived from -t_end/-dt
     -nvis <n>     report/plot interval, 0 disables (default 10)
     -novis        disable output entirely
 
@@ -171,16 +173,22 @@ const ampl   = PetscScalar(0.02)    # initial noise amplitude
 
 # ── Numerics ─────────────────────────────────────────────────────────────────
 #
-# The default dt is ~440× the explicit stability limit of `CahnHilliard2D.jl`
-# (≈4.6e-7 on a 128² grid).  100 implicit steps reach t = 0.02, i.e. past the
-# t ≈ 0.014 that the explicit script needs 30 000 steps to reach.
+# The run is defined by a physical end time `t_end` and a step size `dt`; the
+# step count follows.  `CahnHilliard2D.jl` uses the same `t_end`, so the two
+# scripts simulate exactly the same problem and their walltimes are directly
+# comparable — the only difference being that the explicit script's dt is
+# pinned to its stability limit (≈4.6e-7 at 128², shrinking as dx⁴) whereas dt
+# here is chosen for accuracy and is ~440× larger.
 #
-# Note that the interesting physics needs t ≳ 1e-2: spinodal decomposition only
-# becomes visible around t ≈ 8e-3, before which the field is still essentially
-# the initial noise.  Running a few steps at a tiny dt shows nothing.
-nt   = Int(PETSc.typedget(opts, :nt, 100))
-dt_0 = PetscScalar(PETSc.typedget(opts, :dt, 2e-4))
-nvis = Int(PETSc.typedget(opts, :nvis, 10))
+# The interesting physics needs t ≳ 1e-2: spinodal decomposition only becomes
+# visible around t ≈ 8e-3, before which the field is still essentially the
+# initial noise.  Hence the default t_end = 2e-2, safely past the onset.
+#
+# Passing `-nt` explicitly overrides the step count derived from `t_end`.
+t_end = PetscScalar(PETSc.typedget(opts, :t_end, 2e-2))
+dt_0  = PetscScalar(PETSc.typedget(opts, :dt, 2e-4))
+nt    = Int(PETSc.typedget(opts, :nt, ceil(Int, t_end / dt_0)))
+nvis  = Int(PETSc.typedget(opts, :nvis, 10))
 haskey(opts, :novis) && (nvis = 0)
 
 # ── DMDA: 2 DOFs per node (C, μ), 5-point STAR stencil ──────────────────────
