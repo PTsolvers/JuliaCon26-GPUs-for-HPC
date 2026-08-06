@@ -2,11 +2,11 @@
 # Grid units, single temporary, diagnostics: see README. CPU twin: CahnHilliard2D_plain.jl
 using KernelAbstractions
 using Random, Statistics, Printf, CairoMakie
+include(joinpath(@__DIR__, "common.jl"))
 
 # ---- backend: uncomment one ----
 const backend = CPU();                      const FT = Float64  # CPU reference
 # using CUDA;   const backend = CUDABackend();  const FT = Float64  # NVIDIA
-# using Metal;  const backend = MetalBackend(); const FT = Float32  # Apple GPU (no Float64)
 
 # no-flux (∂n = 0) through the ghost-node mirror A[0]->A[1], A[n+1]->A[n].
 # min/max make it branchless, so no warp divergence at the boundaries.
@@ -32,10 +32,6 @@ end
     C[ix, iy] += dtD * lap(μ, ix, iy, nx, ny)
 end
 
-# KA's CPU backend threads over workgroups, so the thread count matters there
-backend_info() = backend isa CPU ? "CPU ($(Threads.nthreads()) threads)" :
-                                   string(nameof(typeof(backend)))
-
 # checks: F must decrease monotonically, mass must stay constant
 @views function check(C, γ)
     F = sum(@. ((C^2 - 1)^2) / 4) + γ / 2 * (sum(@. (C[2:end, :] - C[1:end-1, :])^2)
@@ -43,7 +39,9 @@ backend_info() = backend isa CPU ? "CPU ($(Threads.nthreads()) threads)" :
     return F, sum(C)
 end
 
-function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true)
+function CahnHilliard2D_KA(; n=512, nt=40_000, nvis=1000,
+                           do_visu=true, verbose=true, framerate=5)
+    nx = ny = n                      # square domain
     # physics (grid units)
     D     = FT(1.0)
     wcell = FT(4.0)                  # interface width, in cells -- resolve with >= 4
@@ -54,8 +52,8 @@ function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true)
     κmax  = FT(8.0)                  # 4/dx² + 4/dy² with dx = dy = 1
     dt    = 2 / (D * κmax * (γ * κmax + 2)) / 2   # explicit 4th-order limit, safety 2
     dtD   = dt * D
-    @printf("%s / %s   nx=%d ny=%d   γ=%.4g  dt=%.5g  Λ=%.1f cells (~%.0f features)\n",
-            backend_info(), FT, nx, ny, γ, dt, 2π*sqrt(2γ), nx/(2π*sqrt(2γ)))
+    verbose && @printf("%s / %s   nx=%d ny=%d   γ=%.4g  dt=%.5g  Λ=%.1f cells (~%.0f features)\n",
+                       backend_info(backend), FT, nx, ny, γ, dt, 2π*sqrt(2γ), nx/(2π*sqrt(2γ)))
     # initial condition on the host, then upload
     Random.seed!(1234)
     C_h    = FT.(C̄ .+ ampl .* randn(nx, ny))
@@ -66,16 +64,12 @@ function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true)
     # kernel objects
     kμ = k_chemical_potential!(backend, 256, (nx, ny))    # static ndrange
     kC = k_update_concentration!(backend, 256, (nx, ny))
-    # visu
+    # visu -- frames are written to output/, never displayed
     if do_visu
-        fig = Figure(; size=(600, 800))
-        axs = (Axis(fig[1, 1][1, 1]; aspect=DataAspect(), xlabel="x", ylabel="y", title="C"),
-               Axis(fig[2, 1]; xlabel="t", ylabel="F", limits=(0, nt*dt, 0, 1.05F0)))
+        dir = outdir(@__FILE__)
         C_v = Float64.(C_h) # needed else Makie silently fails
         Fs  = Point2f[]
-        plt = (heatmap!(axs[1], 1:nx, 1:ny, C_v; colormap=:balance, colorrange=(-1, 1)),
-               lines!(axs[2], Fs; color=:crimson, linewidth=2))
-        cbs = Colorbar(fig[1, 1][1, 2], plt[1])
+        fig, axs, plt, vid = ch_figure(C_v, Fs, nt*dt, 1.05F0)
     end
     # time loop
     KernelAbstractions.synchronize(backend)
@@ -96,19 +90,41 @@ function CahnHilliard2D_KA(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true)
             axs[1].title = @sprintf("C   t = %.1f   F = %.4g", it*dt, F)
             plt[1][3] = C_v                         # heatmap data
             plt[2][1] = Fs                          # line points
-            display(fig)
+            recordframe!(vid); save(joinpath(dir, @sprintf("C_%06d.png", it)), fig)
             t_visu += time() - t_visu_tic
         end
     end
     KernelAbstractions.synchronize(backend)
     t_it = (time() - t_tic - t_visu) / (nt - nwarm)
     # 5 array accesses per step: (read C, write μ) + (read μ, read C, write C)
-    A_eff = 5 * nx * ny * sizeof(FT)
-    @printf("\nt_it = %.3f ms   T_eff = %.1f GB/s   total %.1f s\n",
-            t_it*1e3, A_eff/t_it/1e9, t_it*(nt - nwarm))
+    T_eff = Teff(5, nx, ny, t_it, FT)
     copyto!(C_h, C); F, m = check(C_h, γ)
-    @printf("F: %.6g -> %.6g (must decrease)   Δmean = %+.2e\n", F0, F, (m - m0)/(nx*ny))
-    return
+    Δmean = (m - m0) / (nx*ny)
+    if verbose
+        @printf("\nt_it = %.3f ms   T_eff = %.1f GB/s   total %.1f s\n",
+                t_it*1e3, T_eff, t_it*(nt - nwarm))
+        @printf("F: %.6g -> %.6g (must decrease)   Δmean = %+.2e\n", F0, F, Δmean)
+    end
+    if do_visu
+        savegif(joinpath(dir, basename(dir) * ".gif"), vid; framerate)
+        verbose && println("frames + gif written to $dir")
+    end
+    return (; t_it, T_eff, F0, F, Δmean)
+end
+
+# weak-scaling test: dt is independent of nx in grid units, so growing nx enlarges the domain.
+function scaling_test(; ns=2 .^ (9:15), nt=1000)
+    @printf("%s / %s   scaling test, nt=%d\n\n", backend_info(backend), FT, nt)
+    @printf("%-8s %-10s %-12s %-14s %-14s %-12s\n",
+            "n", "mem [MB]", "t_it [ms]", "T_eff [GB/s]", "t_it/cell [ns]", "Δmean")
+    for n in ns
+        r = CahnHilliard2D_KA(; n, nt, do_visu=false, verbose=false)
+        @printf("%-8d %-10.1f %-12.4f %-14.1f %-14.3f %-12.2e\n",
+                n, 2*n*n*sizeof(FT)/2^20, r.t_it*1e3, r.T_eff,
+                r.t_it/(n*n)*1e9, r.Δmean)
+    end
 end
 
 CahnHilliard2D_KA()
+# CahnHilliard2D_KA(; n=8192, nt=34_000, do_visu=false)
+# scaling_test()

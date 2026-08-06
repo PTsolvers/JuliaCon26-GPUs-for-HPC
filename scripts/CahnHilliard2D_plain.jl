@@ -1,5 +1,6 @@
 # Cahn-Hilliard 2D -- plain Julia, explicit loops.
 using Random, Statistics, Printf, CairoMakie
+include(joinpath(@__DIR__, "common.jl"))
 
 # no-flux (∂n = 0) through the ghost-node mirror A[0]->A[1], A[n+1]->A[n]
 # @propagate_inbounds, to skip bounds check on lap.
@@ -35,7 +36,8 @@ end
     return F, sum(C)
 end
 
-function CahnHilliard2D_plain(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=true)
+function CahnHilliard2D_plain(; n=512, nt=40_000, nvis=1000, do_visu=true, framerate=5)
+    nx = ny = n                  # square domain
     # physics (grid units, dx = dy = 1)
     D     = 1.0
     wcell = 4.0                  # interface width, in cells -- resolve with >= 4
@@ -54,15 +56,11 @@ function CahnHilliard2D_plain(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=tr
     C    .+= C̄ - mean(C)             # pin the conserved mean exactly
     μ      = zeros(nx, ny)
     F0, m0 = check(C, γ)
-    # visu
+    # visu -- frames are written to output/, never displayed
     if do_visu
-        fig = Figure(; size=(600, 800))
-        axs = (Axis(fig[1, 1][1, 1]; aspect=DataAspect(), xlabel="x", ylabel="y", title="C"),
-               Axis(fig[2, 1]; xlabel="t", ylabel="F", limits=(0, nt*dt, 0, 1.05F0)))
+        dir = outdir(@__FILE__)
         Fs  = Point2f[]
-        plt = (heatmap!(axs[1], 1:nx, 1:ny, C; colormap=:balance, colorrange=(-1, 1)),
-               lines!(axs[2], Fs; color=:crimson, linewidth=2))
-        cbs = Colorbar(fig[1, 1][1, 2], plt[1])
+        fig, axs, plt, vid = ch_figure(C, Fs, nt*dt, 1.05F0)
     end
     # time loop
     nwarm = 10; t_tic = 0.0; t_visu = 0.0
@@ -79,7 +77,8 @@ function CahnHilliard2D_plain(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=tr
             axs[1].title = @sprintf("C   t = %.1f   F = %.4g", it*dt, F)
             plt[1][3] = C                           # heatmap data
             plt[2][1] = Fs                          # line points
-            display(fig)
+            recordframe!(vid)
+            save(joinpath(dir, @sprintf("C_%06d.png", it)), fig)
             t_visu += time() - t_visu_tic
         end
     end
@@ -90,6 +89,10 @@ function CahnHilliard2D_plain(; nx=512, ny=512, nt=34_000, nvis=1000, do_visu=tr
             t_it*1e3, A_eff/t_it/1e9, t_it*(nt - nwarm))
     F, m = check(C, γ)
     @printf("F: %.6g -> %.6g (must decrease)   Δmean = %+.2e\n", F0, F, (m - m0)/(nx*ny))
+    if do_visu
+        savegif(joinpath(dir, basename(dir) * ".gif"), vid; framerate)
+        println("frames + gif written to $dir")
+    end
     return
 end
 

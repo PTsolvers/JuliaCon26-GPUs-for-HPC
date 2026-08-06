@@ -1,10 +1,11 @@
 # 2D memory-throughput reference + linear diffusion (KernelAbstractions.jl).
 # T_eff accounting and the μ = C reduction to diffusion: see README.
 using KernelAbstractions, Printf, Random, CairoMakie
+include(joinpath(@__DIR__, "common.jl"))
 
 # ---- backend: uncomment one ----
-# const backend = CPU()
-using CUDA; const backend = CUDABackend()
+# const backend = CPU();                        const FT = Float64  # CPU reference
+using CUDA;   const backend = CUDABackend();  const FT = Float64  # NVIDIA
 
 # no-flux (∂n = 0) ghost-node mirror -- identical to CahnHilliard2D_KA.jl
 # @propagate_inbounds to propagate `inbounds = true`.
@@ -14,6 +15,7 @@ Base.@propagate_inbounds function lap(A, ix, iy, nx, ny)
            (A[ix, min(iy+1, ny)] - 2a + A[ix, max(iy-1, 1)])
 end
 
+# ---- standard 2D indexing ----
 @kernel inbounds = true function k_memcopy!(A, B)
     ix, iy = @index(Global, NTuple)
     A[ix, iy] = B[ix, iy]
@@ -30,57 +32,45 @@ end
     C2[ix, iy] = C[ix, iy] + dtD * lap(C, ix, iy, nx, ny)
 end
 
-# best-of-ntrial mean over nrep launches, so scheduling hiccups drop out
-function bench(k, args; nrep=50, ntrial=5)
-    k(args...)
-    KernelAbstractions.synchronize(backend)
-    best = Inf
-    for _ in 1:ntrial
-        KernelAbstractions.synchronize(backend); t0 = time()
-        for _ in 1:nrep
-            k(args...)
-        end
-        KernelAbstractions.synchronize(backend)
-        best = min(best, (time() - t0) / nrep)
-    end
-    return best
+# build the three kernels for a given n, with static ndrange
+function kernels(n)
+    km = k_memcopy!(backend, 256, (n, n))
+    ks = k_saxpy!(backend, 256, (n, n))
+    kd = k_diffusion!(backend, 256, (n, n))
+    return (km, ks, kd)
 end
 
-Teff(narr, nx, ny, t) = narr * nx * ny * sizeof(Float64) / t / 1e9
-
-backend_info() = backend isa CPU ? "CPU ($(Threads.nthreads()) threads)" :
-                                   string(nameof(typeof(backend)))
-
-function memcopy_bench(; ns=2 .^ (9:15))    # 512 … 32768, 3 arrays => 25.8 GB at 32768²
-    @printf("%s\n\n", backend_info())
+function memcopy_bench(; ns=2 .^ (9:15))   # 512 … 32768, 3 arrays => 25.8 GB at 32768²
+    @printf("%s / %s\n\n", backend_info(backend), FT)
     @printf("%-8s %-20s %-12s %-14s\n", "n", "kernel [arrays]", "t_it [ms]", "T_eff [GB/s]")
     for n in ns
-        A = KernelAbstractions.allocate(backend, Float64, n, n); rand!(A)
-        B = KernelAbstractions.allocate(backend, Float64, n, n); rand!(B)
-        C = KernelAbstractions.allocate(backend, Float64, n, n); rand!(C)
-        for (nm, k, args, narr) in (
-                ("memcopy   [2]", k_memcopy!(backend, 256, (n, n)),   (A, B),         2),
-                ("saxpy     [3]", k_saxpy!(backend, 256, (n, n)),     (A, B, C, 2.0), 3),
-                ("diffusion [2]", k_diffusion!(backend, 256, (n, n)), (A, B, 0.125),  2))
-            t = bench(k, args)
+        A = KernelAbstractions.allocate(backend, FT, n, n); rand!(A)
+        B = KernelAbstractions.allocate(backend, FT, n, n); rand!(B)
+        C = KernelAbstractions.allocate(backend, FT, n, n); rand!(C)
+        km, ks, kd = kernels(n)
+        for (nm, k, args, narr) in (("memcopy   [2]", km, (A, B),            2),
+                                    ("saxpy     [3]", ks, (A, B, C, FT(2)),  3),
+                                    ("diffusion [2]", kd, (A, B, FT(0.125)), 2))
+            t = bench(backend, k, args)
             @printf("%-8s %-20s %-12.4f %-14.1f\n",
-                    nm == "memcopy   [2]" ? string(n) : "", nm, t*1e3, Teff(narr, n, n, t))
+                    nm == "memcopy   [2]" ? string(n) : "", nm, t*1e3, Teff(narr, n, n, t, FT))
         end
         println()
     end
 end
 
-function diffusion2D(; nx=8192, ny=8192, nt=50, do_visu=false)
-    D  = 1.0
-    dt = 1.0 / D / 4.1
-    @printf("%s   nx=%d ny=%d   dt=%.5g\n", backend_info(), nx, ny, dt)
+function diffusion2D(; n=8192, nt=50, do_visu=false)
+    nx = ny = n                      # square domain
+    D  = FT(1.0)
+    dt = FT(1.0) / D / FT(4.1)          # dx² = 1
+    @printf("%s / %s   nx=%d ny=%d   dt=%.5g\n", backend_info(backend), FT, nx, ny, dt)
     # initial condition: a Gaussian blob
     xc, yc, w = nx/2, ny/2, nx/16
-    C_h = [exp(-((ix - xc)^2 + (iy - yc)^2) / w^2) for ix in 1:nx, iy in 1:ny]
-    C   = KernelAbstractions.allocate(backend, Float64, nx, ny); copyto!(C, C_h)
-    C2  = KernelAbstractions.zeros(backend, Float64, nx, ny)
+    C_h = FT[exp(-((ix - xc)^2 + (iy - yc)^2) / w^2) for ix in 1:nx, iy in 1:ny]
+    C   = KernelAbstractions.allocate(backend, FT, nx, ny); copyto!(C, C_h)
+    C2  = KernelAbstractions.zeros(backend, FT, nx, ny)
     m0  = sum(C_h)                                # no-flux BCs => mass is conserved
-    kdiff = k_diffusion!(backend, 256, (nx, ny))  # static ndrange
+    _, _, kdiff = kernels(nx)
     # time loop
     KernelAbstractions.synchronize(backend)
     nwarm = 10; t_tic = 0.0
@@ -91,18 +81,17 @@ function diffusion2D(; nx=8192, ny=8192, nt=50, do_visu=false)
     end
     KernelAbstractions.synchronize(backend)
     t_it  = (time() - t_tic) / (nt - nwarm)
-    A_eff = 2 * nx * ny * sizeof(Float64)
-    @printf("t_it = %.3f ms   T_eff = %.1f GB/s\n", t_it*1e3, A_eff/t_it/1e9)
+    T_eff = Teff(2, nx, ny, t_it, FT)
+    @printf("t_it = %.3f ms   T_eff = %.1f GB/s\n", t_it*1e3, T_eff)
     copyto!(C_h, C)
     @printf("Δmean = %+.2e (no-flux => conserved)\n", (sum(C_h) - m0)/(nx*ny))
-    # visu
+    # visu -- written to output/, never displayed
     if do_visu
-        fig = Figure(; size=(600, 500))
-        ax  = Axis(fig[1, 1][1, 1]; aspect=DataAspect(), xlabel="x", ylabel="y",
-                   title=@sprintf("C   t = %.1f", nt*dt))
-        plt = heatmap!(ax, 1:nx, 1:ny, C_h; colormap=:turbo)
-        Colorbar(fig[1, 1][1, 2], plt)
-        display(fig)
+        dir = outdir(@__FILE__)
+        C_v = Float64.(C_h)   # Float32 heatmaps silently ignore later updates
+        fig, ax, plt = field_figure(C_v; title=@sprintf("C   t = %.1f", nt*dt))
+        save(joinpath(dir, @sprintf("diffusion_%05d.png", nt)), fig)
+        println("figure written to $dir")
     end
     return
 end
