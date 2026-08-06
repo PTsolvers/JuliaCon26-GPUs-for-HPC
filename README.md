@@ -14,7 +14,7 @@ Hands-on with Julia for HPC on GPUs workshop at JuliaCon 2026.
 4. **PETSc.jl** — the same equations again, via PETSc
 5. **Reactant.jl** — if time permits
 
-# Part 1 — Performance basics
+# Part 1: Performance basics
 
 ## Why bother with GPUs
 
@@ -133,7 +133,7 @@ T_eff = n_arrays · nx·ny·sizeof(eltype) / t_it
 
 `T_eff` assumes *perfect* caching of stencil halos, so it charges only the minimum traffic. A kernel reaching the memcopy rate is doing about as well as the hardware allows.
 
-## Step 1 — measure the ceiling
+## Step 1 | measure the ceiling
 
 [`scripts/memcopy2D_KA.jl`](scripts/memcopy2D_KA.jl) runs memcopy, saxpy and diffusion (Laplacian) across resolutions:
 
@@ -170,7 +170,7 @@ A 2:1 read:write ratio also beats any 1:1 copy — saxpy is 11% above memcopy an
 
 Diffusion — one Laplacian on top of a copy — holds **82–85% of memcopy** at every converged size. The added flops are essentially free; the cost is the stencil's halo traffic.
 
-## Step 2 — Cahn-Hilliard
+## Step 2 | Cahn-Hilliard
 
 ```julia
 julia> include("scripts/CahnHilliard2D_KA.jl")   # or scaling_test()
@@ -249,4 +249,3 @@ The slow path is flat at ~0.87 ns/cell at every resolution, being bound by per-t
 ## Further reading
 
 - [PDEs on GPUs](https://pde-on-gpu.vaw.ethz.ch) — the full course this material condenses
-- `CLAUDE.md` — measured numbers, traps already paid for, and what not to retry
