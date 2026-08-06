@@ -160,6 +160,6 @@ function scaling_test(; ns=2 .^ (9:12), nt=1000, fast=true)
 end
 
 CahnHilliard2D_KA()
-# CahnHilliard2D_KA(; n=4096, nt=34_000, do_visu=false)
+# CahnHilliard2D_KA(; n=4096, nt=40_000, do_visu=false)
 # scaling_test()
 # scaling_test(; fast=false)   # 2D NTuple indexing, for the ~3x comparison

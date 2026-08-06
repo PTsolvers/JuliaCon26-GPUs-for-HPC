@@ -126,5 +126,5 @@ function scaling_test(; ns=2 .^ (9:15), nt=1000)
 end
 
 CahnHilliard2D_KA()
-# CahnHilliard2D_KA(; n=8192, nt=34_000, do_visu=false)
+# CahnHilliard2D_KA(; n=8192, nt=40_000, do_visu=false)
 # scaling_test()

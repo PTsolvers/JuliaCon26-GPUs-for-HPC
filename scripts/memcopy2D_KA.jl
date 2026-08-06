@@ -48,12 +48,14 @@ function memcopy_bench(; ns=2 .^ (9:15))   # 512 … 32768, 3 arrays => 25.8 GB 
         B = KernelAbstractions.allocate(backend, FT, n, n); rand!(B)
         C = KernelAbstractions.allocate(backend, FT, n, n); rand!(C)
         km, ks, kd = kernels(n)
-        for (nm, k, args, narr) in (("memcopy   [2]", km, (A, B),            2),
+        # copyto! is the vendor memcpy -- the achievable ceiling, not a spec number
+        for (nm, k, args, narr) in (("copyto!   [2]", copyto!, (A, B),      2),
+                                    ("memcopy   [2]", km, (A, B),            2),
                                     ("saxpy     [3]", ks, (A, B, C, FT(2)),  3),
                                     ("diffusion [2]", kd, (A, B, FT(0.125)), 2))
             t = bench(backend, k, args)
             @printf("%-8s %-20s %-12.4f %-14.1f\n",
-                    nm == "memcopy   [2]" ? string(n) : "", nm, t*1e3, Teff(narr, n, n, t, FT))
+                    nm == "copyto!   [2]" ? string(n) : "", nm, t*1e3, Teff(narr, n, n, t, FT))
         end
         println()
     end
