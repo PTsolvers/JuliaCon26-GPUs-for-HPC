@@ -5,12 +5,12 @@ Random.seed!(1234)
 @views function diffusion_step!(∂²Cx, ∂²Cy, ∇²C, μ, qCx, qCy, C, γ, D, dt, dx, dy)
     # potentials x-dir
     @. ∂²Cx[2:end-1, :] = C[3:end, :] - 2.0C[2:end-1, :] + C[1:end-2, :]
-    @. ∂²Cx[1  , :] = -C[1, :] + C[2, :]
-    @. ∂²Cx[end, :] = C[end-1, :] - C[end, :]
+    @. ∂²Cx[1  , :] = -C[1    , :] + C[2  , :]
+    @. ∂²Cx[end, :] =  C[end-1, :] - C[end, :]
     # potentials y-dir
     @. ∂²Cy[:, 2:end-1] = C[:, 3:end] - 2.0C[:, 2:end-1] + C[:, 1:end-2]
-    @. ∂²Cy[:, 1  ] = -C[:, 1] + C[:, 2]
-    @. ∂²Cy[:, end] = C[:, end-1] - C[:, end]
+    @. ∂²Cy[:, 1  ] = -C[:, 1    ] + C[:, 2  ]
+    @. ∂²Cy[:, end] =  C[:, end-1] - C[:, end]
     # Laplacian
     @. ∇²C = ∂²Cx / dx^2 + ∂²Cy / dy^2
     @. μ   = C^3 - C - γ * ∇²C
@@ -18,7 +18,8 @@ Random.seed!(1234)
     @. qCx[2:end-1, :] = -(μ[2:end, :] - μ[1:end-1, :]) / dx
     @. qCy[:, 2:end-1] = -(μ[:, 2:end] - μ[:, 1:end-1]) / dy
     # update conentration
-    @. C -= dt * D * ((qCx[2:end, :]-qCx[1:end-1, :]) / dx + (qCy[:, 2:end]-qCy[:, 1:end-1]) / dy)
+    @. C -= dt * D * ((qCx[2:end, :]-qCx[1:end-1, :]) / dx
+                    + (qCy[:, 2:end]-qCy[:, 1:end-1]) / dy)
     return
 end
 
@@ -28,7 +29,7 @@ function CahnHilliard2D()
     D      = 1.0
     w      = 0.03           # interface width  ->  ~11 features across the box
     γ      = w^2 / 8
-    C̄      = 0.4            # conserved mean: 0 -> bicontinuous, ±0.4 -> droplets
+    C̄      = 0.0            # conserved mean: 0 -> bicontinuous, ±0.4 -> droplets
     ampl   = 0.02           # initial noise amplitude
     # numerics
     nx, ny = 128, 128
