@@ -192,7 +192,7 @@ function gather_field(g_C, comm, rank, nranks, xs, xe, ys, ye, nx, ny, nxl, nyl)
     return Cg
 end
 
-CahnHilliard2D_PETSc_explicit(n=1024, do_visu=true)
+CahnHilliard2D_PETSc_explicit(n=512, do_visu=true)
 
 # MPICH's atexit handler can crash during teardown on macOS; quick_exit skips it.
 isinteractive() || ccall(:quick_exit, Cvoid, (Cint,), 0)
