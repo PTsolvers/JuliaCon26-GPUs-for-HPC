@@ -122,7 +122,7 @@ function CahnHilliard2D_KA(; n=512, nt=40_000, nvis=1000,
             axs[1].title = @sprintf("C   t = %.1f   F = %.4g", it*dt, F)
             plt[1][3] = C_v                         # heatmap data
             plt[2][1] = Fs                          # line points
-            recordframe!(vid); save(joinpath(dir, @sprintf("C_%06d.png", it)), fig)
+            recordframe!(vid); savepng(joinpath(dir, @sprintf("C_%06d.png", it)), fig)
             t_visu += time() - t_visu_tic
         end
     end

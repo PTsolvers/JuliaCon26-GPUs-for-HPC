@@ -62,7 +62,11 @@ end
 # OUTSIDE its own box, so without it they land straight on the heatmap. The two
 # translate! calls lift panel and inset above the heatmap (z = 99 / 100) -- without
 # them both render underneath it and disappear.
-function ch_figure(C_v, Fs, tmax, Fmax; colormap=:balance, colorrange=(-1, 1))
+# px_per_unit=1 keeps the gif at the figure's own pixel size. Makie defaults to 2
+# (retina), which is 4x the pixels and made a 40-frame gif ~24 MB instead of ~6 MB.
+# TRAP: any `save(path, fig)` interleaved with `recordframe!` must use the SAME
+# px_per_unit, or Cairo segfaults. Hence `savepng` below -- use it for frames.
+function ch_figure(C_v, Fs, tmax, Fmax; colormap=:balance, colorrange=(-1, 1), px_per_unit=1)
     nx, ny = size(C_v)
     fig = Figure(; size=(620, 560))
     axs = (Axis(fig[1, 1][1, 1]; aspect=DataAspect(), xlabel="x", ylabel="y", title="C"),
@@ -81,8 +85,11 @@ function ch_figure(C_v, Fs, tmax, Fmax; colormap=:balance, colorrange=(-1, 1))
     Colorbar(fig[1, 1][1, 2], plt[1])
     translate!(bg.blockscene,     0, 0, 99)
     translate!(axs[2].blockscene, 0, 0, 100)
-    return fig, axs, plt, VideoStream(fig)
+    return fig, axs, plt, VideoStream(fig; px_per_unit)
 end
+
+# Save a figure frame at the same px_per_unit as ch_figure's VideoStream (see above).
+savepng(path, fig; px_per_unit=1) = save(path, fig; px_per_unit)
 
 # Save a VideoStream as a gif at the requested framerate.
 # TRAP: the `framerate` given to VideoStream(fig; framerate=…) is IGNORED for gif

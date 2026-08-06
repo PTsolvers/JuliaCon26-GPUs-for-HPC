@@ -78,7 +78,7 @@ function CahnHilliard2D_plain(; n=512, nt=40_000, nvis=1000, do_visu=true, frame
             plt[1][3] = C                           # heatmap data
             plt[2][1] = Fs                          # line points
             recordframe!(vid)
-            save(joinpath(dir, @sprintf("C_%06d.png", it)), fig)
+            savepng(joinpath(dir, @sprintf("C_%06d.png", it)), fig)
             t_visu += time() - t_visu_tic
         end
     end
