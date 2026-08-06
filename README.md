@@ -9,8 +9,8 @@ Hands-on with Julia for HPC on GPUs workshop at JuliaCon 2026.
 ## Workshop outline
 
 1. **Performance basics** — what limits a stencil code, and how to measure it
-2. **KernelAbstractions in depth** — portable kernels, and composing with the wider ecosystem (e.g. a proper timestepper instead of hand-rolled explicit Euler)
-3. **Chmy.jl (+ KA)** — the same equations, expressed at a higher level
+2. **KernelAbstractions in depth** — portable kernels, and composing with the wider ecosystem (e.g. other timestepper instead of hand-rolled explicit Euler)
+3. **Chmy.jl (+ KA)** — the same equations, expressed at a higher level using dimensions-agnostic DSL
 4. **PETSc.jl** — the same equations again, via PETSc
 5. **Reactant.jl** — if time permits
 
