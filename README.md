@@ -327,14 +327,16 @@ The unknowns live on the grid points, the conductivities on the faces between th
 
 Each stencil row uses one point either side and the two faces adjacent to it. Since $u_{i-1}, u_i, u_{i+1}$ enter linearly, stacking all $n$ equations gives
 
-$$A\,\mathbf{u} = \mathbf{b}, \qquad d_i = k_{i-1/2} + k_{i+1/2}, \qquad
+```math
+A\,\mathbf{u} = \mathbf{b}, \qquad d_i = k_{i-1/2} + k_{i+1/2}, \qquad
 A = \begin{pmatrix}
 d_1      & -k_{3/2} &            &            &  \\
 -k_{3/2} & d_2      & -k_{5/2}   &            &  \\
          & \ddots   & \ddots     & \ddots     &  \\
          &          & -k_{n-3/2} & d_{n-1}    & -k_{n-1/2} \\
          &          &            & -k_{n-1/2} & d_n
-\end{pmatrix}$$
+\end{pmatrix}
+```
 
 with $\mathbf{b}$ holding $h^2 f_i$. $A$ is **tridiagonal** (three non-zeros per row, so $\approx 3n$ entries instead of $n^2$), **symmetric** (the coefficient linking $i$ to $i+1$ and $i+1$ to $i$ are both $-k_{i+1/2}$ — the same face, a direct consequence of evaluating $k$ there), and **positive definite**. Symmetric positive definite is the class conjugate gradient is built for, hence `-ksp_type cg` below.
 
@@ -518,10 +520,12 @@ Explicit Cahn-Hilliard is bounded by $\Delta t \propto \Delta x^4$, which is bru
 
 Writing both relations at the **new** time level and moving everything to one side gives residuals that must vanish:
 
-$$\begin{aligned}
+```math
+\begin{aligned}
 R_C &= \frac{C - C^{\text{old}}}{\Delta t} - D\nabla^2 \mu &&= 0 \\
 R_\mu &= \mu - (C^3 - C) + \gamma\nabla^2 C &&= 0
-\end{aligned}$$
+\end{aligned}
+```
 
 These are the *same expressions* as the explicit passes, rearranged — but now $C$ and $\mu$ appear on both sides, so a timestep is no longer an evaluation but the solution of a coupled nonlinear system $R(x) = 0$ with $x = (C, \mu)$ over the whole grid. Newton linearisation gives:
 
@@ -532,7 +536,8 @@ so **every timestep requires a Jacobian and a linear solve**. That is the price 
 
 With 2 DOFs per node the unknowns interleave, $x = [C_1, \mu_1, C_2, \mu_2, \dots]$, and $\mathbf{J}$ reads as a matrix of $2\times 2$ blocks — one per pair of grid nodes:
 
-$$\mathbf{J} =
+```math
+\mathbf{J} =
 \begin{pmatrix}
 \partial R_C/\partial C & \partial R_C/\partial \mu \\
 \partial R_\mu/\partial C & \partial R_\mu/\partial \mu
@@ -541,7 +546,8 @@ $$\mathbf{J} =
 \begin{pmatrix}
 1/\Delta t & -D\nabla^2 \\
 -(3C^2 - 1) + \gamma\nabla^2 & 1
-\end{pmatrix}$$
+\end{pmatrix}
+```
 
 The diagonal block (a node with itself) is dense; each off-diagonal block (a node with one of its 4 neighbours) has only the two anti-diagonal entries, since `C` and `μ` couple to neighbours purely through the Laplacians. So `J` has block size 2 with 5 blocks per row — and *this* is why the DMDA must carry 2 DOFs: PETSc needs to know there are two unknowns per node to build those blocks, and to offer field-splitting.
 
