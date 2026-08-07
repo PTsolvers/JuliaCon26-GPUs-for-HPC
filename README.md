@@ -6,12 +6,14 @@ Hands-on with Julia for HPC on GPUs workshop at JuliaCon 2026.
 
 > **TODO** — access to the Otus cluster at PC2: account request, login, module setup, how to grab an H100 node, and the Julia environment to instantiate.
 
+All scripts referenced below live in [`scripts/`](scripts/).
+
 ## Workshop outline
 
-1. **Performance basics** — what limits a stencil code, and how to measure it
-2. **KernelAbstractions in depth** — portable kernels, and composing with the wider ecosystem (e.g. other timestepper instead of hand-rolled explicit Euler)
+1. [**Performance basics**](#part-1-performance-basics) — what limits a stencil code, and how to measure it
+2. **KernelAbstractions in depth** — portable kernels, and composing with the wider ecosystem (e.g. a different timestepper instead of hand-rolled explicit Euler)
 3. **Chmy.jl (+ KA)** — the same equations, expressed at a higher level using dimensions-agnostic DSL
-4. **PETSc.jl** — the same equations again, via PETSc but on (parallel) CPU's
+4. [**PETSc.jl**](#part-4-using-petscjl) — the same equations again, via PETSc but on (parallel) CPUs
 5. **Reactant.jl** — if time permits
 
 # Part 1: Performance basics
@@ -55,7 +57,7 @@ Uniform states are unstable only for `|C̄| < 1/√3 ≈ 0.577`; beyond that the
 
 ## A first implementation
 
-[`scripts/CahnHilliard2D_plain.jl`](scripts/CahnHilliard2D_plain.jl) is the solver in plain Julia — explicit loops, no abstractions, ~95 lines including plotting. The physics is two passes over the grid:
+[`CahnHilliard2D_plain.jl`](scripts/CahnHilliard2D_plain.jl) is the solver in plain Julia — explicit loops, no abstractions, ~95 lines including plotting. The physics is two passes over the grid:
 
 ```julia
 # no-flux (∂n = 0) through the ghost-node mirror A[0]->A[1], A[n+1]->A[n]
@@ -133,9 +135,9 @@ T_eff = n_arrays · nx·ny·sizeof(eltype) / t_it
 
 `T_eff` assumes *perfect* caching of stencil halos, so it charges only the minimum traffic. A kernel reaching the memcopy rate is doing about as well as the hardware allows.
 
-## Step 1 - measure the ceiling
+## Step 1 — measure the ceiling
 
-[`scripts/memcopy2D_KA.jl`](scripts/memcopy2D_KA.jl) runs memcopy, saxpy and diffusion (Laplacian) across resolutions:
+[`memcopy2D_KA.jl`](scripts/memcopy2D_KA.jl) runs memcopy, saxpy and diffusion (Laplacian) across resolutions:
 
 ```julia
 julia> include("scripts/memcopy2D_KA.jl")   # memcopy_bench()
@@ -170,7 +172,7 @@ A 2:1 read:write ratio also beats any 1:1 copy — saxpy is 11% above memcopy an
 
 Diffusion — one Laplacian on top of a copy — holds **82–85% of memcopy** at every converged size. The added flops are essentially free; the cost is the stencil's halo traffic.
 
-## Step 2 - Cahn-Hilliard
+## Step 2 — Cahn-Hilliard
 
 ```julia
 julia> include("scripts/CahnHilliard2D_KA.jl")   # or scaling_test()
@@ -255,13 +257,13 @@ The slow path is flat at ~0.87 ns/cell at every resolution, being bound by per-t
 # Part 4: Using PETSc.jl
 
 
-In this part of workshop we will look at the same equations once more, but this time through PETSc — on parallel CPUs rather than GPUs. The goal of this part is not to make Cahn-Hilliard faster, but to show what a library like PETSc buys you: MPI decomposition you do not have to write, and a menu of solvers you can change from the command line without touching your code. That second point is what makes *implicit* timestepping along with multigrid preconditioners practical, which is where the section ends.
+In this part of the workshop we will look at the same equations once more, but this time through PETSc — on parallel CPUs rather than GPUs. The goal of this part is not to make Cahn-Hilliard faster, but to show what a library like PETSc buys you: MPI decomposition you do not have to write, and a menu of solvers you can change from the command line without touching your code. That second point is what makes *implicit* timestepping along with multigrid preconditioners practical, which is where the section ends.
 
 ## What is PETSc?
 
-[PETSc](https://petsc.org/) (Portable, Extensible Toolkit for Scientific Computation) is a long-established (and massive!) C library for solving PDEs in parallel, from laptops to the largest machines. It is used as a solver in many existing codes (such as FENICS) or finite element packages. 
+[PETSc](https://petsc.org/) (Portable, Extensible Toolkit for Scientific Computation) is a long-established (and massive!) C library for solving PDEs in parallel, from laptops to the largest machines. It is used as a solver in many existing codes (such as FEniCS) and finite element packages.
 
-Think of it as a parallel library to solve (non)linear system of equations. At the same time, it also has powerful timestepping algorithms.
+Think of it as a parallel library to solve (non)linear systems of equations. At the same time, it also has powerful timestepping algorithms.
 
 It provides the pieces you would otherwise hand-roll:
 
@@ -276,15 +278,15 @@ It provides the pieces you would otherwise hand-roll:
 The layering is the point: each level uses the one below, so an implicit timestep is a `TS` calling a `SNES` calling a `KSP`. You supply a *residual function* (with the physics) — and PETSc supplies everything else. Crucially, **every solver choice is a runtime option**, so the same binary can run a direct solve on a laptop and multigrid on 10 000 cores.
 
 ## What about PETSc.jl?
-Obviously, it would be great to combined PETSc with the existing Julia ecosystem. There are a number of julia packages that do this; arguably [PETSc.jl](https://github.com/JuliaParallel/PETSc.jl) is the most feature-complete at the moment (specially after a big releases earlier this year).
+Obviously, it would be great to combine PETSc with the existing Julia ecosystem. There are a number of julia packages that do this; arguably [PETSc.jl](https://github.com/JuliaParallel/PETSc.jl) is the most feature-complete at the moment (especially after a big release earlier this year).
 
 It provides:
 - a **high-level interface** that feels like Julia — `KSP(A)`, `solve!(x, ksp, b)` — covering the most-used parts (or at least those parts that the `PETSc.jl` developers are interested in);
 - a **low-level interface** (`PETSc.LibPETSc.*`) that mirrors the C API almost one-for-one, for everything not yet wrapped. It has over 3000 functions.
 
-There are ofcourse many practical advantages over using the C version of PETSc. It ships **pre-built binaries**, so `] add PETSc` gives you a working parallel PETSc with MUMPS, SuperLU_DIST and HYPRE on Linux, macOS and Windows — no build step. And because residual routines are ordinary Julia functions, you can use automatic differentiation for Jacobians, or write them with KernelAbstractions and run them on a GPU.
+There are of course many practical advantages over using the C version of PETSc. It ships **pre-built binaries**, so `] add PETSc` gives you a working parallel PETSc with MUMPS, SuperLU_DIST and HYPRE on Linux, macOS and Windows — no build step. And because residual routines are ordinary Julia functions, you can use automatic differentiation for Jacobians, or write them with KernelAbstractions and run them on a GPU.
 
-On linux and mac, it will also work in parallel with:
+On Linux and macOS, it will also work in parallel with:
 ```julia
 using MPI, PETSc
 MPI.Initialized() || MPI.Init()
@@ -298,7 +300,7 @@ PETSc.finalize(petsclib)
 
 ## Solve a 1D steady-state diffusion equation
 
-Lets start with a simple example that still has all the pieces: a 1D steady-state diffusion example with  **variable coefficients**:
+Let's start with a simple example that still has all the pieces: a 1D steady-state diffusion example with **variable coefficients**:
 
 $$-\frac{d}{dx}\left( k(x) \frac{du}{dx} \right) = f(x)
 \qquad \text{on } [0,1], \qquad u(0) = u(1) = 0$$
@@ -338,11 +340,11 @@ d_1      & -k_{3/2} &            &            &  \\
 \end{pmatrix}
 ```
 
-with $\mathbf{b}$ holding $h^2 f_i$. $A$ is **tridiagonal** (three non-zeros per row, so $\approx 3n$ entries instead of $n^2$), **symmetric** (the coefficient linking $i$ to $i+1$ and $i+1$ to $i$ are both $-k_{i+1/2}$ — the same face, a direct consequence of evaluating $k$ there), and **positive definite**. Symmetric positive definite is the class conjugate gradient is built for, hence `-ksp_type cg` below.
+with $\mathbf{b}$ holding $h^2 f_i$. $A$ is **tridiagonal** (three non-zeros per row, so $\approx 3n$ entries instead of $n^2$), **symmetric** (the coefficients linking $i$ to $i+1$ and $i+1$ to $i$ are both $-k_{i+1/2}$ — the same face, a direct consequence of evaluating $k$ there), and **positive definite**. Symmetric positive definite is the class conjugate gradient is built for, hence `-ksp_type cg` below.
 
 Solving the PDE is now just: build $A$ and $\mathbf{b}$ & hand them to a linear solver.
 
-[`scripts/diffusion1D_PETSc.jl`](scripts/diffusion1D_PETSc.jl) is the whole program — assemble, solve, done:
+[`diffusion1D_PETSc.jl`](scripts/diffusion1D_PETSc.jl) is the whole program — assemble, solve, done:
 
 ```julia
 A = PETSc.MatSeqAIJ(petsclib, n, n, 3)      # sequential sparse matrix, 3 non-zeros per row
@@ -377,7 +379,7 @@ The plot is the check that the physics is right. With constant `k` the solution 
 
 ### First: getting an `mpiexec` that matches
 
-Launch MPI jobs with **`mpiexecjl`**, from the command-line as this is compatible with  `MPI.jl`. To do this, install it once:
+Launch MPI jobs with **`mpiexecjl`**, from the command line, as this is compatible with `MPI.jl`. To do this, install it once:
 
 ```bash
 julia --project=. -e 'using MPI; MPI.install_mpiexecjl()'
@@ -387,7 +389,7 @@ That writes `mpiexecjl` to `~/.julia/bin` — add it to your `PATH`, or call it 
 
 ### The DMDA
 
-[`scripts/diffusion1D_PETSc_dmda.jl`](scripts/diffusion1D_PETSc_dmda.jl) solves the identical 1D elliptic equation on any number of ranks. The only change is that a **DMDA** needs to be specified, which has info about the grid and is used to distribute it in parallel:
+[`diffusion1D_PETSc_dmda.jl`](scripts/diffusion1D_PETSc_dmda.jl) solves the identical 1D elliptic equation on any number of ranks. The only change is that a **DMDA** needs to be specified, which has info about the grid and is used to distribute it in parallel:
 
 ```julia
 da = PETSc.DMDA(petsclib, comm, (PETSc.DM_BOUNDARY_NONE,), (n,), 1, 1,
@@ -406,7 +408,7 @@ PETSc.assemble!(A)                                  # routes any off-rank entrie
 
 There are 3 things the DMDA does: it decides the parallel decomposition, it creates matrices and vectors with the matching layout, and it lets you assemble using **global indices** — so the loop is the serial loop with `1:n` replaced by `xs:xe`. Nothing else changes.
 
-Once this is done 
+Once this is done:
 ```
 $ julia --project=. scripts/diffusion1D_PETSc_dmda.jl
 n = 100,  1 rank(s),  KSP its = 1,  max(u) = 0.022618 at x = 0.212
@@ -415,7 +417,7 @@ $ ~/.julia/bin/mpiexecjl -n 4 julia --project=. scripts/diffusion1D_PETSc_dmda.j
 n = 100,  4 rank(s),  KSP its = 7,  max(u) = 0.022618 at x = 0.212
 ```
 
-Same answer on 1, 2 and 4 ranks — but note **the iteration count changed**: 1 → 3 → 7. The default preconditioner is block Jacobi with one block per rank, so it gets weaker as the domain is cut into more pieces. That is a genuine property of the method, not a bug, and it is exactly the kind of thing you want to be able to change without editing code.
+Same answer on 1 and 4 ranks — but note **the iteration count changed**: 1 → 7. The default preconditioner is block Jacobi with one block per rank, so it gets weaker as the domain is cut into more pieces. That is a genuine property of the method, not a bug, and it is exactly the kind of thing you want to be able to change without editing code.
 
 ### Changing the solver from the command line
 
@@ -478,14 +480,13 @@ Geometric multigrid is the stronger of the two here because the DMDA already kno
 
 `PETSc.initialize(petsclib, log_view = true)` (or `-log_view`) turns on PETSc's profiler. At the end of the run it prints a table of every operation — `KSPSolve`, `MatMult`, `PCSetUp`, `VecScatterBegin` — with call counts, time, flop rates and MPI message volumes.
 
-This is the right tool for "where is the time going" (also on large parallel HPC machines)
-.
+This is the right tool for "where is the time going", including on large parallel HPC machines.
 
 ## Cahn-Hilliard with explicit timestepping
 
-Now back to the workshop's equation. The [plain-Julia](/scripts/CahnHilliard2D_plain.jl) Cahn-Hilliard solver from Part 1 becomes MPI-parallel with essentially no change to the physics — the DMDA supplies the ghost exchange that a distributed stencil needs.
+Now back to the workshop's equation. The plain-Julia Cahn-Hilliard solver from Part 1 ([`CahnHilliard2D_plain.jl`](scripts/CahnHilliard2D_plain.jl)) becomes MPI-parallel with essentially no change to the physics — the DMDA supplies the ghost exchange that a distributed stencil needs.
 
-[`scripts/CahnHilliard2D_PETSc_explicit.jl`](scripts/CahnHilliard2D_PETSc_explicit.jl) uses PETSc for exactly three things:
+[`CahnHilliard2D_PETSc_explicit.jl`](scripts/CahnHilliard2D_PETSc_explicit.jl) uses PETSc for exactly three things:
 
 1. **DMDA** — decomposes the `nx × ny` grid across ranks;
 2. **global and local vectors** — the global vector holds owned points, the local one adds a layer of ghost points;
@@ -499,7 +500,7 @@ withvecs((c, m) -> chemical_potential!(m, c, γ, nx, ny, xs, xe, ys, ye),
          (l_C, ghost_corners), (g_μ, corners))
 ```
 
-The one subtlety is indexing. In parallel, every rank only owns part of the domain and halos are used to transfre info. To make the code similar to the serial plain julia versions, arrays are wrapped as `OffsetArray`s carrying **global** indices, so `lap` is identical to the serial version and each rank simply loops over `xs:xe, ys:ye` instead of `1:nx, 1:ny`. Whether a neighbour is an owned point or a ghost is thus invisible in the kernel.
+The one subtlety is indexing. In parallel, every rank only owns part of the domain, and halos are used to transfer information. To make the code similar to the serial plain-Julia version, arrays are wrapped as `OffsetArray`s carrying **global** indices, so `lap` is identical to the serial version and each rank simply loops over `xs:xe, ys:ye` instead of `1:nx, 1:ny`. Whether a neighbour is an owned point or a ghost is thus invisible in the kernel.
 
 ```bash
 julia --project=. scripts/CahnHilliard2D_PETSc_explicit.jl
@@ -510,7 +511,7 @@ julia --project=. scripts/CahnHilliard2D_PETSc_explicit.jl
 
 ### 1 DOF or 2?
 
-[`CahnHilliard2D_PETSc_explicit_2dof.jl`](scripts/CahnHilliard2D_PETSc_explicit_2dof.jl) is the same solver but rather than holding only `C` at the DMDA, we use two degrees of freedom at every point  `C` and `μ` interleaved in one vector, `[C₁ μ₁ C₂ μ₂ …]`, rather than two separate vectors. The physics is identical — `F: 65902.1 -> 65180.1` from both, at n = 512 over 4000 steps — but it is **25% slower** (0.63 vs 0.50 ms/step), because each kernel touches one field while the interleaved layout drags the other through cache, and each ghost exchange moves both fields when only one is needed.
+[`CahnHilliard2D_PETSc_explicit_2dof.jl`](scripts/CahnHilliard2D_PETSc_explicit_2dof.jl) is the same solver but rather than holding only `C` at the DMDA, we use two degrees of freedom at every point, `C` and `μ`, interleaved in one vector, `[C₁ μ₁ C₂ μ₂ …]`, rather than two separate vectors. The physics is identical — `F: 65902.1 -> 65180.1` from both, at n = 512 over 4000 steps — but it is **25% slower** (0.63 vs 0.50 ms/step), because each kernel touches one field while the interleaved layout drags the other through cache, and each ghost exchange moves both fields when only one is needed.
 
 So the explicit scheme should use 1 DOF. The reason the comparison is worth making is that the *implicit* scheme, discussed in the next section, needs 2.
 
@@ -553,7 +554,7 @@ The diagonal block (a node with itself) is dense; each off-diagonal block (a nod
 
 Note the $\mu$ row has **no $1/\Delta t$ term** — the chemical potential is a constraint, not an evolution equation. The system is therefore indefinite, which is what makes the linear solve interesting (or more challenging, some would say).
 
-[`scripts/CahnHilliard2D_PETSc_implicit.jl`](scripts/CahnHilliard2D_PETSc_implicit.jl) supplies the residual (the code above, one loop) and the Jacobian analytically; `SNES` does the rest (solving the nonlinear system, linesearch to find the optimal $\alpha$, ...).
+[`CahnHilliard2D_PETSc_implicit.jl`](scripts/CahnHilliard2D_PETSc_implicit.jl) supplies the residual (the code above, one loop) and the Jacobian analytically; `SNES` does the rest (solving the nonlinear system, linesearch to find the optimal $\alpha$, ...).
 
 ### Running it, and watching Newton converge
 
@@ -571,7 +572,7 @@ julia --project=. scripts/CahnHilliard2D_PETSc_implicit.jl -n 129 -nt 2 -snes_mo
 > step      1, t =     2.78, F = 4160.15, Δmean = +2.57e-19, Newton its = 2
 ```
 
-Look at the norms: `2e+01 → 7e-03 → 3e-09`, roughly squaring the error each time. That is **quadratic convergence**, and it is the signature of a correct Jacobian — a wrong or approximate one may still converges, but linearly, taking many more iterations. `-snes_test_jacobian` checks it directly against finite differences (here they agree to $\sim\!10^{-10}$).
+Look at the norms: `2e+01 → 7e-03 → 3e-09`, roughly squaring the error each time. That is **quadratic convergence**, and it is the signature of a correct Jacobian — a wrong or approximate one may still converge, but linearly, taking many more iterations. `-snes_test_jacobian` checks it directly against finite differences (here they agree to $\sim\!10^{-10}$).
 
 Because every Newton step contains a linear solve, the two monitors nest. Adding `-ksp_monitor`:
 
@@ -602,7 +603,7 @@ Useful SNES options, alongside the KSP ones from the 1D example:
 | `-log_view` | the profiler: time in `SNESSolve` vs `KSPSolve` vs `MatMult` |
 
 ### How the solvers scale
-The disadvantage of the implicit solve is that each step is much slower than the explicit solve, as we need to solve a nonlinear system of equations. The advantage is that we can use much larger timestes and that it is the more classical way to solve such equations, which are resolved to computer precision.
+The disadvantage of the implicit solve is that each step is much slower than the explicit solve, as we need to solve a nonlinear system of equations. The advantage is that we can use much larger timesteps and that it is the more classical way to solve such equations, which are resolved to computer precision.
 
 Yet, using scalable preconditioners is crucial. You will quickly run into limitations if you want to solve it with direct solvers. Below some timings (performed on a MacBook M4 Max), in s/step:
 
