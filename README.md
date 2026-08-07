@@ -300,17 +300,16 @@ PETSc.finalize(petsclib)
 
 Lets start with a simple example that still has all the pieces: a 1D steady-state diffusion example with  **variable coefficients**:
 
-$$-\frac{d}{dx}\left( k(x)\, \frac{du}{dx} \right) = f(x)
+$$-\frac{d}{dx}\left( k(x) \frac{du}{dx} \right) = f(x)
 \qquad \text{on } [0,1], \qquad u(0) = u(1) = 0$$
 
 With $n$ points, spacing $h$, and $x_i = (i-1)h$, the conservative discretisation evaluates the conductivity on cell **faces**, $k_{i\pm1/2} = k(x_i \pm h/2)$:
 
-$$-k_{i-1/2}\, u_{i-1} \;+\; \left(k_{i-1/2} + k_{i+1/2}\right) u_i \;-\; k_{i+1/2}\, u_{i+1}
-\;=\; h^2 f_i$$
+$$-k_{i-1/2} u_{i-1} + \left(k_{i-1/2} + k_{i+1/2}\right) u_i - k_{i+1/2} u_{i+1} = h^2 f_i$$
 
 Evaluating $k$ at faces rather than averaging $k(x_i)$ is what makes the scheme conservative: the flux leaving cell $i$ through a face is exactly the flux entering cell $i+1$. The resulting coefficient matrix $A$ is tridiagonal and symmetric positive definite, so CG is the natural Krylov method.
 
-The two inputs are a **uniform source** $f(x) = 1$ and a smooth **100× contrast** in conductivity, $k(x) = 1 + 99\,\sigma\!\left((x-0.5)/0.02\right)$ with $\sigma$ the logistic function — so $k \approx 1$ on the left half and $\approx 100$ on the right.
+The two inputs are a **uniform source** $f(x) = 1$ and a smooth **100× contrast** in conductivity, $k(x) = 1 + 99\sigma\left((x-0.5)/0.02\right)$ with $\sigma$ the logistic function — so $k \approx 1$ on the left half and $\approx 100$ on the right.
 
 Both matter for the shape of the answer. With a source, $u$ must curve: integrating once gives $-k(x)\,u'(x) = x - C$, so the flux grows linearly as it picks up source along the way. For *constant* $k$ that integrates to the symmetric parabola $u = x(1-x)/2k$, peaking at $x = 0.5$. (Without a source, $f = 0$, $u$ would just be a straight line — here identically zero, since both ends are pinned at zero.) With variable $k$, $u'(x) = (C-x)/k(x)$ drops by 100× across the jump, which is what produces the kink, the steep left flank, the near-flat right one, and a maximum pushed left to $x \approx 0.21$ instead of $0.5$.
 
@@ -337,7 +336,7 @@ d_1      & -k_{3/2} &            &            &  \\
          &          &            & -k_{n-1/2} & d_n
 \end{pmatrix}$$
 
-with $\mathbf{b}$ holding $h^2 f_i$. $A$ is **tridiagonal** (three non-zeros per row, so $\approx 3n$ entries instead of $n^2$), **symmetric** (the coefficient linking $i$ to $i+1$ and $i+1$ to $i$ are both $-k_{i+1/2}$ — the same face, a direct consequence of evaluating $k$ there), and **positive definite** (smallest eigenvalue $\approx 0.034$ at $n = 40$). Symmetric positive definite is the class conjugate gradient is built for, hence `-ksp_type cg` below.
+with $\mathbf{b}$ holding $h^2 f_i$. $A$ is **tridiagonal** (three non-zeros per row, so $\approx 3n$ entries instead of $n^2$), **symmetric** (the coefficient linking $i$ to $i+1$ and $i+1$ to $i$ are both $-k_{i+1/2}$ — the same face, a direct consequence of evaluating $k$ there), and **positive definite**. Symmetric positive definite is the class conjugate gradient is built for, hence `-ksp_type cg` below.
 
 Solving the PDE is now just: build $A$ and $\mathbf{b}$ & hand them to a linear solver.
 
@@ -520,26 +519,26 @@ Explicit Cahn-Hilliard is bounded by $\Delta t \propto \Delta x^4$, which is bru
 Writing both relations at the **new** time level and moving everything to one side gives residuals that must vanish:
 
 $$\begin{aligned}
-R_C &= \frac{C - C^{\text{old}}}{\Delta t} - D\,\nabla^2 \mu &&= 0 \\[4pt] R_\mu &= \mu - (C^3 - C) + \gamma\, \nabla^2 C &&= 0 \end{aligned}$$
+R_C &= \frac{C - C^{\text{old}}}{\Delta t} - D\nabla^2 \mu &&= 0 \\[4pt] R_\mu &= \mu - (C^3 - C) + \gamma\nabla^2 C &&= 0 \end{aligned}$$
 
 These are the *same expressions* as the explicit passes, rearranged — but now $C$ and $\mu$ appear on both sides, so a timestep is no longer an evaluation but the solution of a coupled nonlinear system $R(x) = 0$ with $x = (C, \mu)$ over the whole grid. Newton linearisation gives:
 
-$$J(x)\, \delta x = -R(x), \qquad x \leftarrow x + \alpha \delta x,
+$$J(x) \delta x = -R(x), \qquad x \leftarrow x + \alpha \delta x,
 \qquad J = \frac{\partial R}{\partial x}$$
 
-so **every timestep requires a Jacobian and a linear solve**. That is the price for the larger `dt`.
+so **every timestep requires a Jacobian and a linear solve**. That is the price for the larger $\Delta t$.
 
 With 2 DOFs per node the unknowns interleave, $x = [\,C_1\; \mu_1\; C_2\; \mu_2\; \dots]$, and $J$ reads as a matrix of $2\times 2$ blocks — one per pair of grid nodes:
 
-$$J \;=\;
+$$J =
 \begin{pmatrix}
 \partial R_C/\partial C & \partial R_C/\partial \mu \\[2pt]
 \partial R_\mu/\partial C & \partial R_\mu/\partial \mu
 \end{pmatrix}
-\;=\;
+=
 \begin{pmatrix}
-1/\Delta t & -D\,\nabla^2 \\[2pt]
--(3C^2 - 1) + \gamma\,\nabla^2 & 1
+1/\Delta t & -D\nabla^2 \\[2pt]
+-(3C^2 - 1) + \gamma\nabla^2 & 1
 \end{pmatrix}$$
 
 The diagonal block (a node with itself) is dense; each off-diagonal block (a node with one of its 4 neighbours) has only the two anti-diagonal entries, since `C` and `μ` couple to neighbours purely through the Laplacians. So `J` has block size 2 with 5 blocks per row — and *this* is why the DMDA must carry 2 DOFs: PETSc needs to know there are two unknowns per node to build those blocks, and to offer field-splitting.
