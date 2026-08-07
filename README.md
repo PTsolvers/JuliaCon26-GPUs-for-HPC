@@ -519,7 +519,9 @@ Explicit Cahn-Hilliard is bounded by $\Delta t \propto \Delta x^4$, which is bru
 Writing both relations at the **new** time level and moving everything to one side gives residuals that must vanish:
 
 $$\begin{aligned}
-R_C &= \frac{C - C^{\text{old}}}{\Delta t} - D\nabla^2 \mu &&= 0 \\ R_\mu &= \mu - (C^3 - C) + \gamma\nabla^2 C &&= 0 \end{aligned}$$
+R_C &= \frac{C - C^{\text{old}}}{\Delta t} - D\nabla^2 \mu &&= 0 \\
+R_\mu &= \mu - (C^3 - C) + \gamma\nabla^2 C &&= 0
+\end{aligned}$$
 
 These are the *same expressions* as the explicit passes, rearranged — but now $C$ and $\mu$ appear on both sides, so a timestep is no longer an evaluation but the solution of a coupled nonlinear system $R(x) = 0$ with $x = (C, \mu)$ over the whole grid. Newton linearisation gives:
 
@@ -532,12 +534,12 @@ With 2 DOFs per node the unknowns interleave, $x = [C_1, \mu_1, C_2, \mu_2, \dot
 
 $$\mathbf{J} =
 \begin{pmatrix}
-\partial R_C/\partial C & \partial R_C/\partial \mu \\[2pt]
+\partial R_C/\partial C & \partial R_C/\partial \mu \\
 \partial R_\mu/\partial C & \partial R_\mu/\partial \mu
 \end{pmatrix}
 =
 \begin{pmatrix}
-1/\Delta t & -D\nabla^2 \\[2pt]
+1/\Delta t & -D\nabla^2 \\
 -(3C^2 - 1) + \gamma\nabla^2 & 1
 \end{pmatrix}$$
 
