@@ -25,6 +25,32 @@
   `dt_factor = 400` times the explicit limit, i.e. 100 steps where the explicit script needs
   40 000 to reach the same t_end ≈ 277.8 — and F ends within ~2% of the explicit result.
 
+  ── Implicit scheme ──────────────────────────────────────────────────────────
+  
+  In the explicit scheme the new state is *computed*: every right-hand side is known from Cᵒˡᵈ,
+  so each pass is an assignment.  Implicitly, the unknowns appear on both sides — C depends on
+  ∇²μ, μ depends on C³ − C and ∇²C, all at the new time level — so a step is no longer an
+  evaluation but the *solution* of a coupled nonlinear system R(x) = 0, with x = (C, μ) over the
+  whole grid (2·n² unknowns).
+
+  Newton solves that by repeated linearisation.  Expanding R about the current iterate,
+
+      R(x + δx) ≈ R(x) + J(x) δx,        J = ∂R/∂x
+
+  and asking for the update that zeroes the linear model gives
+
+      J(x) δx = −R(x),        x ← x + δx
+
+  where J(x) is a matrix and R(x) is a vector of the same size as x.  The linear system is solved    
+  repeated until ‖R‖ is small.  So the Jacobian is not an optional extra: it *is* the linear
+  operator of the system solved at every Newton iteration.  Its quality controls convergence
+  (an exact J gives quadratic convergence — here 2–4 iterations per step), and its sparsity
+  structure is what the linear solver and preconditioner actually see, which is why the block
+  structure below matters as much as the values.
+
+  PETSc needs J supplied in some form: written out analytically (what this script does), built by
+  finite differences with colouring (`-fd_jacobian`), or approximated in a matrix-free manner. 
+
   ── Block structure of the Jacobian ──────────────────────────────────────────
 
   Newton needs J = ∂(R_C, R_μ)/∂(C, μ).  With 2 DOFs per node the unknowns are interleaved,
@@ -81,41 +107,142 @@
   `julia --project=. -e 'using MPI; println(MPI.MPIPreferences.binary)'` — in this project both
   use MPICH_jll.
 
+  If you want to run this on an HPC cluster, see the documentation of PETSc.jl on how to link the 
+  package with MPI abi and the local MPI installation, which allows you to use precompiled binaries; 
+  alternatively you can compile your own version of PETSc & link that to PETSc.jl 
+
   ── Usage ────────────────────────────────────────────────────────────────────
 
-    # defaults: 512², dt = 400x the explicit limit, 100 steps.  NOTE this uses the *direct*
-    # solver and takes ~500 s serially -- see "Linear solvers" for the fast invocation.
+    # defaults: 513², dt = 400x the explicit limit, 100 steps.  NOTE this uses the *direct*
+    # solver and is slow -- see "Linear solvers" for the fast invocations.
     julia --project=. scripts/CahnHilliard2D_PETSc_implicit.jl
 
-    # RECOMMENDED: 4 ranks + ASM/ILU.  Same run in ~13 s.
+    # smaller grid, solver output
+    julia --project=. scripts/CahnHilliard2D_PETSc_implicit.jl -n 129 -snes_monitor -snes_converged_reason
+
+    # iterative outer solver (FGMRES) with block-Jacobi preconditioner
+    julia --project=. scripts/CahnHilliard2D_PETSc_implicit.jl -n 257  -snes_monitor -snes_converged_reason -ksp_type fgmres -pc_type bjacobi
+
+    # RECOMMENDED -- geometric multigrid.  Converges in ~2 KSP iterations at ANY grid size,
+    # which is the property to look for: the cost per step then grows only like the number of
+    # unknowns.
+    #
+    # The default n = 513 is chosen for this: see the note on grid sizes below.
+    julia --project=. scripts/CahnHilliard2D_PETSc_implicit.jl \
+        -ksp_type fgmres -pc_type mg -pc_mg_levels 4 \
+        -mg_levels_ksp_type gmres -mg_levels_ksp_max_it 8 \
+        -mg_levels_pc_type ilu -mg_levels_pc_factor_levels 1 \
+        -mg_coarse_ksp_type preonly -mg_coarse_pc_type lu
+
+    # ...and the same under MPI.  Two changes are needed, both because the sequential-only
+    # factorisations above have no mpiaij implementation ("Could not locate a solver type for
+    # factorization type ILU and matrix type mpiaij"):
+    #   * the smoother's ILU must sit inside bjacobi (or asm), i.e. one ILU per rank;
+    #   * the coarse solve must be a parallel LU.  `redundant` replicates the (tiny) coarse
+    #     grid on every rank and factorises it locally; `-mg_coarse_pc_factor_mat_solver_type
+    #     superlu_dist` is the true distributed alternative and works equally well here.
+    ~/.julia/bin/mpiexecjl -n 4 julia --project=. scripts/CahnHilliard2D_PETSc_implicit.jl \
+        -ksp_type fgmres -pc_type mg -pc_mg_levels 4 \
+        -mg_levels_ksp_type gmres -mg_levels_ksp_max_it 8 \
+        -mg_levels_pc_type bjacobi -mg_levels_sub_pc_type ilu \
+        -mg_levels_sub_pc_factor_levels 1 \
+        -mg_coarse_ksp_type preonly -mg_coarse_pc_type redundant \
+        -mg_coarse_redundant_pc_type lu
+
+    # alternative: additive Schwarz + ILU.  Simpler to write and slightly faster at these
+    # sizes, but its iteration count grows with the rank count -- it is not grid-independent.
     ~/.julia/bin/mpiexecjl -n 4 julia --project=. scripts/CahnHilliard2D_PETSc_implicit.jl \
         -ksp_type fgmres -pc_type asm -sub_pc_type ilu -sub_pc_factor_levels 3
 
-    # smaller grid, solver output
-    julia --project=. scripts/CahnHilliard2D_PETSc_implicit.jl -n 128 \
-        -snes_monitor -snes_converged_reason
 
   ── Linear solvers ───────────────────────────────────────────────────────────
 
-  The default is a sparse direct LU (umfpack serial, superlu_dist under MPI): robust everywhere,
-  but it dominates the runtime — 5.1 s/step at 512² serial, versus 0.13 s/step for ASM/ILU on
-  4 ranks.  That 38x gap is mostly the solver, not the rank count.  It is the default because the
-  mixed (C, μ) system is indefinite (the μ-equation has no time derivative, so its diagonal block
-  is near-singular) and most black-box preconditioners fail on it.  Measured:
+  The default is a sparse direct LU (umfpack serial, superlu_dist under MPI): it never fails, and
+  at the sizes people first try it is no slower than anything else.  It is nonetheless the worst
+  choice asymptotically.  What makes this system awkward for the cheaper alternatives is that it
+  is indefinite: the μ-equation has no time derivative, so its diagonal block does not grow as
+  dt → 0.
 
-    - default ILU, plain GAMG, plain hypre         → diverge immediately
-    - Jacobi / SOR / point-block smoothers         → complete stall
-    - ASM + ILU(3)                                 → fastest; 512² fine, diverged at 513²/4 ranks
-    - fieldsplit *schur* + hypre blocks            → most robust iterative option; scales
-    - fieldsplit additive / multiplicative         → diverge (the C–μ coupling dominates)
-    - GAMG / geometric MG + Krylov smoothers       → work, but slower than the direct solve here
+  Two things are worth measuring, and they answer different questions.  Walltime answers "how long
+  will this take", which is what you actually care about — but it is the noisier number: a
+  background process or another job on the node can move it by a factor of several.  KSP iteration
+  count answers "will this still work when the problem gets bigger", and is essentially immune to
+  machine noise.  The iteration count tells you which walltime trend you are on.
 
-  The lesson: a Krylov-accelerated smoother is essential, and any field split must keep the C–μ
-  coupling (Schur, not additive).  The script errors out rather than silently freezing if a
-  chosen preconditioner diverges.
+  Measured serially, s/step (`-nt 5`), and mean KSP iterations per Newton step:
+
+                    n=129    n=257    n=513   n=1025     KSP its (129 → 513)
+      direct LU      0.62     1.04     3.93    22.73     — (no iterations)
+      geometric MG   0.59     0.74     1.39     4.00     1.9  1.9  2.0   ← grid-independent
+      ASM + ILU(3)   0.57     0.62     1.03     2.32     6.8  6.8  6.8   ← flat in n, grows w/ ranks
+
+  The same walltimes as cost *factors* relative to n = 129.  Each row doubles n, so the number of
+  unknowns N ~ (n-1)² grows 4x; an O(N) method — the best achievable, since every unknown must be
+  touched at least once — would follow the "ideal" column:
+
+      n        N/N₁₂₉   ideal O(N)     LU      MG     ASM
+      129         1         1          1.0     1.0     1.0
+      257         4         4          1.7     1.3     1.1
+      513        16        16          6.4     2.4     1.8
+      1025       64        64         36.8     6.8     4.1
+
+  Every column beats "ideal", which is not a paradox: at n = 129 the per-step time is dominated by
+  fixed overhead (residual and Jacobian assembly, PETSc bookkeeping) rather than by the linear
+  solve, so the baseline is too expensive and every ratio is flattered.  Cost per unknown shows it
+  directly — 37 / 36 / 35 ns at n = 129 for LU / MG / ASM, i.e. all three doing the same non-solve
+  work, versus 22 / 3.8 / 2.2 ns at n = 1025 where the solve dominates.
+
+  So read the asymptotic end.  Fitting t ~ N^p over the last refinement (513 → 1025):
+
+      direct LU     p = 1.27    superlinear — the factorisation cost, as expected
+      geometric MG  p = 0.76    ≈ O(N)
+      ASM + ILU(3)  p = 0.59    ≈ O(N)
+
+  Both iterative methods are at or below O(N) (p < 1 while the fixed overhead is still being
+  amortised), whereas LU has clearly crossed into superlinear growth and keeps getting worse.  At
+  129² all three are within 10% of each other — the direct solver is perfectly fine at small sizes,
+  which is why it is a safe default; it is the *trend* that rules it out for large problems.
+
+  MG and ASM are close in walltime, and ASM is even slightly ahead.  The iteration counts are what
+  distinguish them: MG's ~2 is grid-independent by construction and stays ~2.8 on 4 ranks, whereas
+  ASM is a one-level domain-decomposition method whose count grows with the number of subdomains —
+  it diverged outright at 513² on 4 ranks in earlier testing.  MG is the method that keeps working
+  as you scale up; ASM is the one that is quicker to type.
+
+  (Timings were taken on a machine that was not perfectly idle; treat the ratios and exponents as
+  meaningful and the absolute values as indicative.)
+
+  A note on grid sizes.  The DMDA is vertex-centred: n points span n-1 intervals, and geometric
+  multigrid halves the interval count at every level, so PETSc requires (n-1)/(n_coarse-1) to be
+  an integer.  n = 513 gives 512 -> 256 -> 128 -> 64 intervals and coarsens cleanly; n = 512 gives
+  511, which is odd, so even a single level fails. 
+  That is why the default is n = 513 = 2^9 + 1 rather than 512.  Every other solver here works at
+  any n; only -pc_type mg cares.  (The explicit scripts use 512 because they never coarsen.)
+
+  Other options, measured:
+
+    - geometric MG (`-pc_type mg`) + Krylov smoother  → best; see the Usage block for the exact
+                                                        serial and MPI invocations
+    - ASM + ILU(3)                                    → fastest at these sizes, simplest to write,
+                                                        but not grid- or rank-independent
+    - point-block Jacobi as the MG smoother           → converges, but slower than GMRES/ILU
+    - fieldsplit *schur* + hypre blocks               → works; splits C from μ (see the Jacobian
+                                                        block-structure section above)
+    - fieldsplit additive / multiplicative            → diverge (the C–μ coupling dominates)
+    - plain ILU / GAMG / hypre with default smoothers → diverge immediately
+
+  The lesson: a Krylov-accelerated smoother is essential (plain Jacobi/SOR smoothers are too weak
+  for an indefinite system), and any field split must keep the C–μ coupling — Schur, not additive.
+  The script errors out rather than silently freezing if a chosen preconditioner diverges.
+
+  NOTE for MPI: several of PETSc's factorisations are sequential-only.  `-pc_type ilu` and
+  `-pc_type lu` have no `mpiaij` implementation, so under MPI they must be wrapped per rank
+  (`-pc_type bjacobi -sub_pc_type ilu`) or replaced by a parallel solver (`redundant` + lu, or
+  `-pc_factor_mat_solver_type superlu_dist`).  Otherwise PETSc aborts with
+  "Could not locate a solver type for factorization type ILU and matrix type mpiaij".
 
   Keyword arguments (and their command-line equivalents):
-    n=512          -n <size>          square grid size (-da_grid_x/-da_grid_y also work)
+    n=513          -n <size>          square grid size; use 2^k+1 for -pc_type mg
     dt_factor=400  -dt_factor <f>     dt as a multiple of the explicit stability limit
     nframes=40     -nframes <k>       number of frames/report lines over the whole run
     nt=nothing     -nt <n>            step count; overrides the value derived from t_end/dt
@@ -237,7 +364,7 @@ end
 Implicit (backward-Euler) Cahn-Hilliard on a PETSc DMDA.  Keyword arguments mirror the explicit
 scripts; PETSc solver options are still taken from `ARGS`.
 """
-function CahnHilliard2D_PETSc_implicit(; n=512, dt_factor=400, nframes=40, do_visu=true,
+function CahnHilliard2D_PETSc_implicit(; n=513, dt_factor=400, nframes=40, do_visu=true,
                                          framerate=5, nt=nothing, nvis=nothing)
     # `-n <size>` on the command line overrides the `n` keyword (square grid).
     n = Int(PETSc.typedget(PETSc.parse_options(ARGS), :n, n))
@@ -348,6 +475,7 @@ function CahnHilliard2D_PETSc_implicit(; n=512, dt_factor=400, nframes=40, do_vi
         petsclib, comm,
         (PETSc.DM_BOUNDARY_GHOSTED, PETSc.DM_BOUNDARY_GHOSTED),
         (n, n),                   # grid size: `n=` keyword or -n; -da_grid_x/-da_grid_y also work
+                                  # n = 2^k+1 (513 = 2^9+1) so geometric multigrid can coarsen
         2,                        # DOFs per node: (C, μ)
         1,                        # stencil width
         PETSc.DMDA_STENCIL_STAR;
