@@ -969,7 +969,9 @@ end
 
 CahnHilliard2D_PETSc_implicit(do_visu=true)
 
-# teardown; quick_exit bypasses C atexit handlers (same workaround as ex19.jl).
+# teardown; quick_exit bypasses C atexit handlers (same workaround as ex19.jl).  Those handlers
+# also flush stdout, so flush explicitly first or the final lines are lost under MPI.
+flush(stdout)
 if !isinteractive()
     ccall(:quick_exit, Cvoid, (Cint,), 0)
 end

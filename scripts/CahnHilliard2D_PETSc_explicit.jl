@@ -194,5 +194,8 @@ end
 
 CahnHilliard2D_PETSc_explicit(n=512, do_visu=true)
 
-# MPICH's atexit handler can crash during teardown on macOS; quick_exit skips it.
+# MPICH's atexit handler can crash during teardown on macOS; quick_exit skips it.  It also skips
+# the atexit hook that flushes stdout, so flush explicitly first -- otherwise the last lines of
+# output are silently lost (visible mainly under MPI, where more output is buffered).
+flush(stdout)
 isinteractive() || ccall(:quick_exit, Cvoid, (Cint,), 0)
