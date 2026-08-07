@@ -96,3 +96,24 @@ savepng(path, fig; px_per_unit=1) = save(path, fig; px_per_unit)
 # output -- only the one passed to `save` takes effect, and its default is 25 fps.
 # Always go through this helper.
 savegif(path, vid; framerate=5) = save(path, vid; framerate)
+
+# 1D solution + coefficient plot, for the steady-state diffusion examples.
+# Two stacked panels sharing the x axis: u(x) on top, k(x) below on a log scale, so the kink in
+# the solution lines up visibly with the jump in conductivity.
+function diffusion1D_figure(x, u, kfun; title="", path=nothing)
+    fig = Figure(; size=(700, 480))
+    ax1 = Axis(fig[1, 1]; ylabel="u(x)", title)
+    lines!(ax1, x, u; color=:crimson, linewidth=2.5)
+    imax = argmax(u)
+    scatter!(ax1, [x[imax]], [u[imax]]; color=:crimson, markersize=10)
+    text!(ax1, x[imax], u[imax]; text=" max at x = $(round(x[imax], digits=3))",
+          align=(:left, :center), fontsize=11)
+    hidexdecorations!(ax1; grid=false)
+
+    ax2 = Axis(fig[2, 1]; xlabel="x", ylabel="k(x)", yscale=log10)
+    lines!(ax2, x, kfun.(x); color=:steelblue, linewidth=2.5)
+    rowsize!(fig.layout, 2, Relative(0.32))
+    linkxaxes!(ax1, ax2)
+    isnothing(path) || savepng(path, fig)
+    return fig
+end
