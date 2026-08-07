@@ -121,8 +121,7 @@ function CahnHilliardND_Chmy(dims::Vararg{Int,N}; do_visu=true, backend=CPU(), n
     C̄    = 0.4
     ampl = 0.02
     # physics
-    Chmy.@uniform @scalars γ
-    @scalars C
+    @scalars @uniform(γ) C
     # operators
     divg = Divergence(StaggeredCentralDifference())
     grad = Gradient(StaggeredCentralDifference())
@@ -168,4 +167,4 @@ function visme(C::AbstractMatrix)
 end
 visme(C::AbstractArray) = visme(C[:, :, end÷2])
 
-CahnHilliardND_Chmy(32768, 32768; do_visu=false, backend=CUDABackend(), nt=100)
+CahnHilliardND_Chmy(512, 512; do_visu=true, backend=CUDABackend(), nt=50_000)
