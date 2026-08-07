@@ -519,18 +519,18 @@ Explicit Cahn-Hilliard is bounded by $\Delta t \propto \Delta x^4$, which is bru
 Writing both relations at the **new** time level and moving everything to one side gives residuals that must vanish:
 
 $$\begin{aligned}
-R_C &= \frac{C - C^{\text{old}}}{\Delta t} - D\nabla^2 \mu &&= 0 \\[4pt] R_\mu &= \mu - (C^3 - C) + \gamma\nabla^2 C &&= 0 \end{aligned}$$
+R_C &= \frac{C - C^{\text{old}}}{\Delta t} - D\nabla^2 \mu &&= 0 \\ R_\mu &= \mu - (C^3 - C) + \gamma\nabla^2 C &&= 0 \end{aligned}$$
 
 These are the *same expressions* as the explicit passes, rearranged — but now $C$ and $\mu$ appear on both sides, so a timestep is no longer an evaluation but the solution of a coupled nonlinear system $R(x) = 0$ with $x = (C, \mu)$ over the whole grid. Newton linearisation gives:
 
-$$J(x) \delta x = -R(x), \qquad x \leftarrow x + \alpha \delta x,
-\qquad J = \frac{\partial R}{\partial x}$$
+$$\mathbf{J}(x) \delta x = -R(x), \qquad x \leftarrow x + \alpha \delta x,
+\qquad \mathbf{J} = \frac{\partial R}{\partial x}$$
 
 so **every timestep requires a Jacobian and a linear solve**. That is the price for the larger $\Delta t$.
 
-With 2 DOFs per node the unknowns interleave, $x = [\,C_1\; \mu_1\; C_2\; \mu_2\; \dots]$, and $J$ reads as a matrix of $2\times 2$ blocks — one per pair of grid nodes:
+With 2 DOFs per node the unknowns interleave, $x = [C_1, \mu_1, C_2, \mu_2, \dots]$, and $\mathbf{J}$ reads as a matrix of $2\times 2$ blocks — one per pair of grid nodes:
 
-$$J =
+$$\mathbf{J} =
 \begin{pmatrix}
 \partial R_C/\partial C & \partial R_C/\partial \mu \\[2pt]
 \partial R_\mu/\partial C & \partial R_\mu/\partial \mu
