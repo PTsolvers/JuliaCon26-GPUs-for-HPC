@@ -4,6 +4,7 @@ using CairoMakie
 using Statistics
 using Printf
 using Random
+using CUDA
 
 const 𝓅 = Chmy.Point()
 const 𝓈 = Chmy.Segment()
@@ -75,23 +76,23 @@ end
 @inline update_elements!(kernel, C2, C1, r, bnd, ::Tuple{}, ::Tuple{}, ::Tuple{}) = nothing
 @inline function update_elements!(kernel, C2, C1, r, bnd, exprs, ranges, offsets)
     range = first(ranges)
-    origin = first(range) - first(CartesianIndices(size(range)))
+    origin = first(range) - oneunit(first(range))
     kernel(C2, C1, r, first(exprs), bnd, first(offsets), origin; ndrange=size(range))
     return update_elements!(kernel, C2, C1, r, bnd, Base.tail(exprs), Base.tail(ranges), Base.tail(offsets))
 end
 
 function solve!(C2, C1, nt, γ, C, exprs, ranges)
     backend = get_backend(C2)
-    update! = update_kernel!(backend)
+    update! = update_kernel!(backend, 256)
     offsets = make_offsets(Val(ndims(C2)))
-    synchronize(backend)
+    KernelAbstractions.synchronize(backend)
     @time begin
         for _ in 1:nt
             bnd = Binding(γ => 2.0, C => C1)
-            update_elements!(update!, C2, C1, 0.01, bnd, exprs, ranges, offsets)
+            update_elements!(update!, C2, C1, 0.005, bnd, exprs, ranges, offsets)
             C2, C1 = C1, C2
         end
-        synchronize(backend)
+        KernelAbstractions.synchronize(backend)
     end
     return C2, C1
 end
@@ -115,14 +116,10 @@ function no_flux(q, ::Val{N}, ::Val{D}, Δ) where {N,D}
     return normalize(q[D][loc...][ids...]) => SLiteral(0)
 end
 
-function cahn_hilliard_nd(dims::Vararg{Int,N}; do_visu=true) where {N}
-    N > 0 || throw(ArgumentError("at least one dimension is required"))
-    all(n -> n >= 4, dims) || throw(ArgumentError("each dimension must contain at least four cells"))
+function CahnHilliardND_Chmy(dims::Vararg{Int,N}; do_visu=true, backend=CPU(), nt=40_000) where {N}
     # parameters
     C̄    = 0.4
     ampl = 0.02
-    # numerics
-    nt = 40_000
     # physics
     Chmy.@uniform @scalars γ
     @scalars C
@@ -143,22 +140,32 @@ function cahn_hilliard_nd(dims::Vararg{Int,N}; do_visu=true) where {N}
     ranges = make_ranges(dims)
     # allocate arrays
     Random.seed!(1234)
-    Cⁿ   = C̄ .+ ampl .* randn(dims)
-    Cⁿ   .+= C̄ - mean(Cⁿ)
-    Cⁿ⁺¹ = copy(Cⁿ)
+    Cⁿₕ   = C̄ .+ ampl .* randn(dims)
+    Cⁿₕ .+= C̄ - mean(Cⁿₕ)
+    Cⁿ    = KernelAbstractions.allocate(backend, Float64, dims); copyto!(Cⁿ, Cⁿₕ)
+    Cⁿ⁺¹  = copy(Cⁿ)
     # time loop
     Cⁿ⁺¹, Cⁿ = solve!(Cⁿ⁺¹, Cⁿ, nt, γ, C[loc...], exprs, ranges)
     # plot
-    if do_visu
-        if N == 2
-            fig = Figure()
-            ax  = Axis(fig[1, 1][1, 1]; aspect=DataAspect())
-            hm  = heatmap!(ax, Cⁿ)
-            Colorbar(fig[1, 1][1, 2], hm)
-            display(fig)
-        end
-    end
+    do_visu && visme(Cⁿ⁺¹)
     return
 end
 
-cahn_hilliard_nd(128, 128; do_visu=false)
+function visme(C::AbstractVector)
+    fig = Figure()
+    ax  = Axis(fig[1, 1])
+    lines!(ax, Array(C))
+    display(fig)
+    return
+end
+function visme(C::AbstractMatrix)
+    fig = Figure()
+    ax  = Axis(fig[1, 1]; aspect=DataAspect())
+    hm  = heatmap!(ax, Array(C))
+    Colorbar(fig[1, 2], hm)
+    display(fig)
+    return
+end
+visme(C::AbstractArray) = visme(C[:, :, end÷2])
+
+CahnHilliardND_Chmy(32768, 32768; do_visu=false, backend=CUDABackend(), nt=100)
