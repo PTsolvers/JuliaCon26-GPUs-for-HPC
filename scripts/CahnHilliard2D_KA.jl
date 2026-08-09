@@ -32,13 +32,6 @@ end
     C[ix, iy] += dtD * lap(μ, ix, iy, nx, ny)
 end
 
-# checks: F must decrease monotonically, mass must stay constant
-@views function check(C, γ)
-    F = sum(@. ((C^2 - 1)^2) / 4) + γ / 2 * (sum(@. (C[2:end, :] - C[1:end-1, :])^2)
-                                           + sum(@. (C[:, 2:end] - C[:, 1:end-1])^2))
-    return F, sum(C)
-end
-
 function CahnHilliard2D_KA(; n=512, nt=40_000, nvis=1000,
                            do_visu=true, verbose=true, framerate=5)
     nx = ny = n                      # square domain

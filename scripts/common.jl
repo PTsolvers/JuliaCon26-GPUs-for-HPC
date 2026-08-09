@@ -25,7 +25,8 @@ backend_info(backend) = backend isa CPU ? "CPU ($(Threads.nthreads()) threads)" 
                                           string(nameof(typeof(backend)))
 
 # effective memory throughput: n_arrays passes over the grid, cache ignored
-Teff(narr, nx, ny, t, T) = narr * nx * ny * sizeof(T) / t / 1e9
+Teff(narr, nx, ny, t, T) = Teff(narr, nx * ny, t, T)
+Teff(narr, npts, t, T) = narr * npts * sizeof(T) / t / 1e9
 
 # best-of-ntrial mean over nrep launches, so scheduling hiccups drop out.
 # NB this is a *burst* measurement -- a real time loop runs ~10% slower.
@@ -116,4 +117,11 @@ function diffusion1D_figure(x, u, kfun; title="", path=nothing)
     linkxaxes!(ax1, ax2)
     isnothing(path) || savepng(path, fig)
     return fig
+end
+
+# checks: F must decrease monotonically, mass must stay constant
+@views function check(C, γ)
+    F = sum(@. ((C^2 - 1)^2) / 4) + γ / 2 * (sum(@. (C[2:end, :] - C[1:end-1, :])^2)
+                                           + sum(@. (C[:, 2:end] - C[:, 1:end-1])^2))
+    return F, sum(C)
 end
