@@ -6,13 +6,29 @@ Hands-on with Julia for HPC on GPUs workshop at [JuliaCon 2026](https://juliacon
 
 <br>
 
-**Instructors:** [Ludovic Räss](https://github.com/luraess), [Ivan Utkin](https://github.com/utkinis), [Collin Wittenstein](https://github.com/cwittens), and [Boris Kaus](https://github.com/boriskaus), .
+**Instructors:** [Ludovic Räss](https://github.com/luraess), [Ivan Utkin](https://github.com/utkinis), [Collin Wittenstein](https://github.com/cwittens) and [Boris Kaus](https://github.com/boriskaus)
 
-**Where:** JGU Mainz Muschel — N2
+**Where:** JGU Mainz, Muschel — N2
 
-**When:** August 10th, 14:30 (CEST)
+**When:** August 10th, 14:30–17:30 (CEST)
 
-**More:** https://pretalx.com/juliacon-2026/talk/MRFYNN/
+**More:** [pretalx](https://pretalx.com/juliacon-2026/talk/MRFYNN/)
+
+## About
+
+Julia offers the best of both worlds: high-level expressiveness with low-level performance, so modern accelerators can be targeted without writing hardware-specific code.
+
+This workshop makes that concrete for PDE solvers. We take one equation, Cahn-Hilliard in 2D, and carry it from a plain Julia loop to a GPU kernel running close to the memory bandwidth of the device, measuring at every step. Along the way: [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) for portable kernels, [Chmy.jl (v0.2)](https://github.com/PTsolvers/Chmy.jl/tree/iu/v0.2) for finite-difference discretisations, [PETSc.jl](https://github.com/JuliaParallel/PETSc.jl) for implicit and CPU-parallel solves, and [Reactant.jl](https://github.com/EnzymeAD/Reactant.jl) if time allows.
+
+**Prerequisites.** Basic Julia (functions, modules, control flow, arrays) and familiarity with Git, SSH and Bash. No prior GPU or distributed-computing experience is assumed.
+
+**Audience.** Researchers, engineers and developers looking to accelerate scientific computing, whether or not they have used an HPC system before.
+
+### Scope
+
+The workshop concentrates on **single-device performance and portability**. Everything measured here, from the memcopy ceiling to the flat cost-per-cell across a 1024× range in problem size, is about using one GPU well and knowing when it is being used well.
+
+Multi-device parallelisation is the natural next step rather than a separate subject. [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) and [ImplicitGlobalGrid.jl](https://github.com/omlins/ImplicitGlobalGrid.jl) cover it, hiding the halo exchange behind the same stencil syntax so that a single-GPU code becomes a multi-GPU one with little change. They are left out here for time, but the weak scaling shown in Part 1 is exactly the property that carries over: a domain too large for one device is split across several at constant cost per cell. For this solver a single 144 GB GH200 holds roughly 65536² before that becomes necessary.
 
 ## Getting started
 
@@ -23,14 +39,10 @@ All scripts referenced below live in [`scripts/`](scripts/).
 ## Workshop outline
 
 1. [**Performance basics**](#part-1-performance-basics) — what limits a stencil code, and how to measure it
-2. **KernelAbstractions in depth** — portable kernels, and composing with the wider ecosystem (e.g. a different timestepper instead of hand-rolled explicit Euler)
-3. **Chmy.jl (+ KA)** — the same equations, expressed at a higher level using dimensions-agnostic DSL
-4. [**PETSc.jl**](#part-4-using-petscjl) — the same equations again, via PETSc but on (parallel) CPUs
-5. **Reactant.jl** — if time permits
-
-## GPUs for HPC
-
-The small print of the course
+2. **[KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) in depth** — portable kernels, and composing with the wider ecosystem (e.g. a different timestepper instead of hand-rolled explicit Euler)
+3. **[Chmy.jl](https://github.com/PTsolvers/Chmy.jl) (+ KA)** — the same equations, expressed at a higher level using dimensions-agnostic DSL
+4. [**PETSc.jl**](#part-4-using-petscjl) — the same equations again, via [PETSc](https://petsc.org/) but on (parallel) CPUs
+5. **[Reactant.jl](https://github.com/EnzymeAD/Reactant.jl)** — if time permits
 
 # Part 1: Performance basics
 
