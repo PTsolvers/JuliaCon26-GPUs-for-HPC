@@ -34,10 +34,10 @@ All scripts referenced below live in [`scripts/`](scripts/).
 
 ## Workshop outline
 
-1. [**Performance basics**](#part-1-performance-basics) — what limits a stencil code, and how to measure it
-2. **[KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) in depth** — portable kernels, and composing with the wider ecosystem (e.g. a different timestepper instead of hand-rolled explicit Euler)
-3. **[Chmy.jl](https://github.com/PTsolvers/Chmy.jl) (+ KA)** — the same equations, expressed at a higher level using dimensions-agnostic DSL
-4. [**PETSc.jl**](#part-4-using-petscjl) — the same equations again, via [PETSc](https://petsc.org/) but on (parallel) CPUs
+1. [**Part 1: Performance basics**](#part-1-performance-basics) — what limits a stencil code, and how to measure it
+2. [**Part 2: KernelAbstractions**](#part-2-kernelabstractions) — portable kernels, and composing with the wider ecosystem (e.g. a different timestepper instead of explicit Euler)
+3. [**Part 3: Using Chmy.jl**](#part-3-using-chmyjl)** — the same equations, expressed at a higher level using dimensions-agnostic DSL
+4. [**Part 4: Using PETSc.jl**](#part-4-using-petscjl) — the same equations again, via [PETSc](https://petsc.org/) but on (parallel) CPUs
 5. **[Reactant.jl](https://github.com/EnzymeAD/Reactant.jl)** — if time permits
 
 # Part 1: Performance basics
