@@ -294,7 +294,7 @@ The slow path is flat at ~0.87 ns/cell at every resolution, being bound by per-t
 
 by Collin Wittenstein: [cwittens.github.io](https://cwittens.github.io/)
 
-If you want an interative Jupyter Notebook of this Part, you can find it [here](scripts/Part2_KA_notebook.ipynb).
+If you want an interative Jupyter Notebook of this Part, you can find it [here](https://github.com/PTsolvers/JuliaCon26-GPUs-for-HPC/blob/main/scripts/Part2_KA_notebook.ipynb).
 
 We build the Cahn-Hilliard solver from Part 1 again, this time with KernelAbstractions:
 
@@ -905,7 +905,7 @@ So in conclusion, `T_eff` is a good metric to know that you are using clever cod
 
 ---
 
-*This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl) with source file:  [Part2_KA_Literate_source.jl](scripts/Part2_KA_literate_source.jl)*
+*This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl) with source file:  [Part2_KA_Literate_source.jl](https://github.com/PTsolvers/JuliaCon26-GPUs-for-HPC/blob/main/scripts/Part2_KA_literate_source.jl)*
 
 
 
