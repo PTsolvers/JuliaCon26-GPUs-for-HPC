@@ -12,17 +12,13 @@ Hands-on with Julia for HPC on GPUs workshop at [JuliaCon 2026](https://juliacon
 
 **When:** August 10th, 14:30–17:30 (CEST)
 
-**More:** [pretalx](https://pretalx.com/juliacon-2026/talk/MRFYNN/)
+**More:** [https://pretalx.com/juliacon-2026/talk/MRFYNN/ (pretalx)](https://pretalx.com/juliacon-2026/talk/MRFYNN/)
 
 ## About
 
 Julia offers the best of both worlds: high-level expressiveness with low-level performance, so modern accelerators can be targeted without writing hardware-specific code.
 
 This workshop makes that concrete for PDE solvers. We take one equation, Cahn-Hilliard in 2D, and carry it from a plain Julia loop to a GPU kernel running close to the memory bandwidth of the device, measuring at every step. Along the way: [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) for portable kernels, [Chmy.jl (v0.2)](https://github.com/PTsolvers/Chmy.jl/tree/iu/v0.2) for finite-difference discretisations, [PETSc.jl](https://github.com/JuliaParallel/PETSc.jl) for implicit and CPU-parallel solves, and [Reactant.jl](https://github.com/EnzymeAD/Reactant.jl) if time allows.
-
-**Prerequisites.** Basic Julia (functions, modules, control flow, arrays) and familiarity with Git, SSH and Bash. No prior GPU or distributed-computing experience is assumed.
-
-**Audience.** Researchers, engineers and developers looking to accelerate scientific computing, whether or not they have used an HPC system before.
 
 ### Scope
 
@@ -285,10 +281,6 @@ Metal is not in the project by default, so start with `] add Metal`. The backend
 | 2048 | 69.9 | 23.0 |
 
 The slow path is flat at ~0.87 ns/cell at every resolution, being bound by per-thread index arithmetic rather than by grid size. On NVIDIA the same 2D penalty exists but is mild, and largely removed by the static workgroup size and static `ndrange` these scripts already use.
-
-## Further reading
-
-- [PDEs on GPUs](https://pde-on-gpu.vaw.ethz.ch) — the full course this material condenses
 
 # Part 2: KernelAbstractions
 
@@ -907,11 +899,7 @@ So in conclusion, `T_eff` is a good metric to know that you are using clever cod
 
 *This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl) with source file:  [Part2_KA_Literate_source.jl](scripts/Part2_KA_literate_source.jl)*
 
-
-
-
 # Part 4: Using PETSc.jl
-
 
 In this part of the workshop we will look at the same equations once more, but this time through PETSc — on parallel CPUs rather than GPUs. The goal of this part is not to make Cahn-Hilliard faster, but to show what a library like PETSc buys you: MPI decomposition you do not have to write, and a menu of solvers you can change from the command line without touching your code. That second point is what makes *implicit* timestepping along with multigrid preconditioners practical, which is where the section ends.
 
@@ -1297,5 +1285,8 @@ PETSc has gained substantial GPU support in recent years. If built with CUDA/HIP
 
 The catch is data movement: PETSc keeps host and device copies and synchronises them, so a residual evaluated on the CPU forces a transfer every iteration and can easily cost more than it saves. For good performance the **residual routine should run on the GPU too** — which is exactly what KernelAbstractions is for, and why the KA kernels from Part 1 compose well with this. PETSc.jl's `examples/ex19.jl` shows a fully GPU-resident residual and FD-coloring Jacobian.
 
-
 Note that **the pre-built PETSc_jll binaries currently ship without GPU support**, so this route needs a custom PETSc build for now. We would really appreciate help with this!
+
+# Further reading
+
+- [PDEs on GPUs](https://pde-on-gpu.vaw.ethz.ch) — the full course this material condenses
