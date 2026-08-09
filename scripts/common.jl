@@ -120,8 +120,18 @@ function diffusion1D_figure(x, u, kfun; title="", path=nothing)
 end
 
 # checks: F must decrease monotonically, mass must stay constant
-@views function check(C, γ)
+@views function check(C::AbstractVector, γ)
+    F = sum(@. ((C^2 - 1)^2) / 4) + γ / 2 * (sum(@. (C[2:end] - C[1:end-1])^2))
+    return F, sum(C)
+end
+@views function check(C::AbstractMatrix, γ)
     F = sum(@. ((C^2 - 1)^2) / 4) + γ / 2 * (sum(@. (C[2:end, :] - C[1:end-1, :])^2)
                                            + sum(@. (C[:, 2:end] - C[:, 1:end-1])^2))
+    return F, sum(C)
+end
+@views function check(C::AbstractArray, γ)
+    F = sum(@. ((C^2 - 1)^2) / 4) + γ / 2 * (sum(@. (C[2:end, :, :] - C[1:end-1, :, :])^2)
+                                           + sum(@. (C[:, 2:end, :] - C[:, 1:end-1, :])^2)
+                                           + sum(@. (C[:, :, 2:end] - C[:, :, 1:end-1])^2))
     return F, sum(C)
 end

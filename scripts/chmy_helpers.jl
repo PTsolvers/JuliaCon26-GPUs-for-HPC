@@ -111,3 +111,4 @@ function updatefigure!(plt, C)
     plt[1] = Array(C)
     return
 end
+updatefigure!(plt, C::AbstractArray{<:Any,3}) = updatefigure!(plt, C[:, :, end÷2])

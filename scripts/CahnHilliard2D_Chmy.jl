@@ -15,7 +15,7 @@ function solve!(Cⁿ⁺¹, Cⁿ, nt, γ, C, exprs, params, do_visu, nvis)
     ranges  = make_ranges(dims)
     offsets = make_offsets(Val(ndims(Cⁿ)))
     KernelAbstractions.synchronize(backend)
-    r = 0.05 / params.γ / ndims(Cⁿ)
+    r = 0.05 / params.γ / ndims(Cⁿ)^2
     F0, m0 = check(Cⁿ, params.γ)
     # visualisation
     if do_visu
