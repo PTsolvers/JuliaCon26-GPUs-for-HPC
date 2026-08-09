@@ -901,6 +901,18 @@ So in conclusion, `T_eff` is a good metric to know that you are using clever cod
 
 # Part 4: Using PETSc.jl
 
+
+> [!IMPORTANT]
+> **On the Otus cluster (PC2, Paderborn), set up the environment first:**
+>
+> ```bash
+> source setup_julia_petsc_local.sh
+> ```
+>
+> This loads the Julia module, points MPI.jl at `MPICH_jll`, instantiates the project and installs `mpiexecjl`. It must be `source`d, not executed, so the module load and environment variables survive in your shell. Note that this setup runs on a *single node* — multi-node runs need MPI.jl linked against the system MPI instead (see [Using PETSc.jl on very large HPC systems](#using-petscjl-on-very-large-hpc-systems)).
+>
+> On your own laptop none of this is needed: `julia --project=.` with `Pkg.instantiate()` is enough, since PETSc.jl ships pre-built binaries.
+
 In this part of the workshop we will look at the same equations once more, but this time through PETSc — on parallel CPUs rather than GPUs. The goal of this part is not to make Cahn-Hilliard faster, but to show what a library like PETSc buys you: MPI decomposition you do not have to write, and a menu of solvers you can change from the command line without touching your code. That second point is what makes *implicit* timestepping along with multigrid preconditioners practical, which is where the section ends.
 
 ## What is PETSc?
@@ -1029,7 +1041,7 @@ Launch MPI jobs with **`mpiexecjl`**, from the command line, as this is compatib
 julia --project=. -e 'using MPI; MPI.install_mpiexecjl()'
 ```
 
-That writes `mpiexecjl` to `~/.julia/bin` — add it to your `PATH`, or call it by full path as below. (If it is already there you will get an error saying so; add `force=true` to overwrite.) To check which MPI you are actually on: `julia --project=. -e 'using MPI; println(MPI.MPIPreferences.binary)'`. On a cluster you would instead point MPI.jl at the system MPI — see [Using PETSc.jl on very large HPC systems](#using-petscjl-on-very-large-hpc-systems) at the end.
+That writes `mpiexecjl` to `~/.julia/bin` — add it to your `PATH`, or call it by full path as below. (On Otus, `setup_julia_petsc_local.sh` has already done this for you.) (If it is already there you will get an error saying so; add `force=true` to overwrite.) To check which MPI you are actually on: `julia --project=. -e 'using MPI; println(MPI.MPIPreferences.binary)'`. On a cluster you would instead point MPI.jl at the system MPI — see [Using PETSc.jl on very large HPC systems](#using-petscjl-on-very-large-hpc-systems) at the end.
 
 ### The DMDA
 
@@ -1056,7 +1068,10 @@ Once this is done:
 ```
 $ julia --project=. scripts/diffusion1D_PETSc_dmda.jl
 n = 100,  1 rank(s),  KSP its = 1,  max(u) = 0.022618 at x = 0.212
+```
 
+and in parallel
+```
 $ ~/.julia/bin/mpiexecjl -n 4 julia --project=. scripts/diffusion1D_PETSc_dmda.jl
 n = 100,  4 rank(s),  KSP its = 7,  max(u) = 0.022618 at x = 0.212
 ```
@@ -1148,6 +1163,9 @@ The one subtlety is indexing. In parallel, every rank only owns part of the doma
 
 ```bash
 julia --project=. scripts/CahnHilliard2D_PETSc_explicit.jl
+```
+and in parallel:
+```bash
 ~/.julia/bin/mpiexecjl -n 4 julia --project=. scripts/CahnHilliard2D_PETSc_explicit.jl
 ```
 
