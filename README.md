@@ -38,7 +38,7 @@ All scripts referenced below live in [`scripts/`](scripts/).
 2. [**Part 2: KernelAbstractions**](#part-2-kernelabstractions) — portable kernels, and composing with the wider ecosystem (e.g. a different timestepper instead of explicit Euler)
 3. [**Part 3: Using Chmy.jl**](#part-3-using-chmyjl) — the same equations, expressed at a higher level using dimensions-agnostic DSL
 4. [**Part 4: Using PETSc.jl**](#part-4-using-petscjl) — the same equations again, via [PETSc](https://petsc.org/) but on (parallel) CPUs
-5. [**Part 5: Using Reactant.jl**](#part-5-using-reactantjl)** — if time permits
+5. [**Part 5: Using Reactant.jl**](#part-5-using-reactantjl) — if time permits
 
 # Part 1: Performance basics
 
