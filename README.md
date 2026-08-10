@@ -14,6 +14,13 @@ Hands-on with Julia for HPC on GPUs workshop at [JuliaCon 2026](https://juliacon
 
 **More:** [https://pretalx.com/juliacon-2026/talk/MRFYNN/ (pretalx)](https://pretalx.com/juliacon-2026/talk/MRFYNN/)
 
+<a href="https://pc2.uni-paderborn.de/"><img src="assets/Logo_PC2.png" width=200px align="left" hspace="20" vspace="6"></a>
+
+**Compute resources** for this workshop are kindly provided by the [Paderborn Center for Parallel Computing (PC2)](https://pc2.uni-paderborn.de/), giving participants access to the Otus cluster and its NVIDIA H100 GPUs.
+
+<br clear="left">
+
+
 ## About
 
 Julia offers the best of both worlds: high-level expressiveness with low-level performance, so modern accelerators can be targeted without writing hardware-specific code.
@@ -321,6 +328,9 @@ Metal is not in the project by default, so start with `] add Metal`. The backend
 | 2048 | 69.9 | 23.0 |
 
 The slow path is flat at ~0.87 ns/cell at every resolution, being bound by per-thread index arithmetic rather than by grid size. On NVIDIA the same 2D penalty exists but is mild, and largely removed by the static workgroup size and static `ndrange` these scripts already use.
+
+> [!NOTE]
+> Part 1 condenses the first half of [**PDEs on GPUs**](https://pde-on-gpu.vaw.ethz.ch), which covers the same ground at course length: memory-bound stencils, `T_eff`, and the route from a CPU loop to a GPU kernel.
 
 # Part 2: KernelAbstractions
 
@@ -1344,13 +1354,3 @@ PETSc has gained substantial GPU support in recent years. If built with CUDA/HIP
 The catch is data movement: PETSc keeps host and device copies and synchronises them, so a residual evaluated on the CPU forces a transfer every iteration and can easily cost more than it saves. For good performance the **residual routine should run on the GPU too** — which is exactly what KernelAbstractions is for, and why the KA kernels from Part 1 compose well with this. PETSc.jl's `examples/ex19.jl` shows a fully GPU-resident residual and FD-coloring Jacobian.
 
 Note that **the pre-built PETSc_jll binaries currently ship without GPU support**, so this route needs a custom PETSc build for now. We would really appreciate help with this!
-
-# Further reading
-
-- [PDEs on GPUs](https://pde-on-gpu.vaw.ethz.ch) — the full course this material condenses
-
-# Acknowledgements
-
-We thank the [Paderborn Center for Parallel Computing (PC2)](https://pc2.uni-paderborn.de/) for providing access to the Otus cluster and its NVIDIA H100 GPUs for this workshop.
-
-<a href="https://pc2.uni-paderborn.de/"><img src="assets/Logo_PC2.png" width=300px></a>
