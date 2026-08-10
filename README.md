@@ -1208,6 +1208,23 @@ A single implementation can work in one, two, or three dimensions. Because Chmy'
 
 The implementations in [CahnHilliard_nD_Chmy.jl](scripts/CahnHilliard_nD_Chmy.jl) and [chmy_helpers.jl](scripts/chmy_helpers.jl) are fully dimension-independent. They use multiple dispatch and recursion to specialise the solver for each case. This general implementation is necessarily more involved, which is why the tutorial first develops the two-dimensional case explicitly.
 
+Selecting the 1D, 2D, or 3D versions is then just a matter of selecting the number of grid points:
+
+```julia
+const backend = CUDABackend()
+const N = 256
+
+CahnHilliard_ND_Chmy(N; backend)
+CahnHilliard_ND_Chmy(N, N; backend)
+CahnHilliard_ND_Chmy(N, N, N; backend)
+```
+
+Running this code results in the following results:
+
+|1D|2D|3D|
+|--|--|--|
+|![](assets/CahnHilliard1D_Chmy.png)|![](assets/CahnHilliard2D_Chmy.png)|![](assets/CahnHilliard3D_Chmy.png)|
+
 ## Testing performance
 
 We measure the effective memory throughput in the same way as in Part 1. For this metric, each iteration of the Chmy-based code counts one full-array read and one full-array write, for two global-memory accesses in total. In contrast, the two-field KernelAbstractions implementation counts five full-array accesses per iteration.
