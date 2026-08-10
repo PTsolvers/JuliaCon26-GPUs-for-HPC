@@ -170,7 +170,11 @@ The `min`/`max` in `lap` apply the ghost-node mirror without branching. Only two
 
 i.e. the flux divergence *is* the Laplacian of `μ`.
 
-This runs fine at 512². Reaching 8192² takes two further things: scaling that keeps the constants well-conditioned, and hardware that can move the memory fast. Both are the subject of the rest of Part 1.
+This runs fine at 512². Reaching 8192² takes two further things:
+- scaling that keeps the constants well-conditioned, and;
+- hardware that can move the memory fast.
+
+Both are the subject of the rest of Part 1.
 
 ## Scaling
 
@@ -197,7 +201,7 @@ The CPU thread sweep shows the same from the other side, for Cahn-Hilliard at 81
 | 36 | **320.7** | 19.1× | 53% |
 | 72 | 287.0 | 17.1× | 24% |
 
-Near-linear to 8 threads, rolling off after, saturating at 36, and slower on 72 cores than on 36. The memory bus saturates before the cores do.
+Near-linear to 8 threads, saturating at 36, and slower on 72 cores than on 36. The memory bus saturates before the cores do.
 
 Hence counting the arrays each kernel must move, ignoring cache:
 
@@ -225,21 +229,21 @@ julia> include("scripts/memcopy2D_KA.jl")   # memcopy_bench()
 
 GH200 144G HBM3e, Float64. Device-reported peak is **4917 GB/s** (3.201 GHz × 6144 bit); `copyto!` — NVIDIA's own tuned copy — reaches **4308 GB/s**, i.e. 88% of it.
 
-| n | memcopy [2] | saxpy [3] | diffusion [2] |
-|---|---|---|---|
-| 512 | 1294 | 1729 | 1249 |
-| 1024 | 3480 | 5055 | 2589 |
-| 2048 | 3242 | 3822 | 2805 |
-| 4096 | 3791 | 4251 | 3206 |
-| 8192 | 3947 | 4414 | 3334 |
-| 16384 | 3984 | 4433 | 3346 |
-| 32768 | **3988** | **4457** | **3269** |
+| n | `copyto!` | memcopy [2] | saxpy [3] | diffusion [2] |
+|---|---|---|---|---|
+| 512 | 1638 GB/s | 1294 GB/s | 1729 GB/s | 1249 GB/s |
+| 1024 | 3957 | 3480 | 5055 | 2589 |
+| 2048 | 3584 | 3242 | 3822 | 2805 |
+| 4096 | 4158 | 3791 | 4251 | 3206 |
+| 8192 | 4307 | 3947 | 4414 | 3334 |
+| 16384 | **4308** | **3984** | **4433** | **3346** |
+| 32768 | 4396 | 3988 | 4457 | 3269 |
 
 All four below at 16384², so they are directly comparable:
 
 | | `T_eff` | of peak | of `copyto!` | of memcopy |
 |---|---|---|---|---|
-| `copyto!` (vendor, 1:1) | 4308 | 88% | 100% | 108% |
+| `copyto!` (vendor, 1:1) | 4308 GB/s | 88% | 100% | 108% |
 | saxpy (KA, 2:1) | 4433 | 90% | 103% | 111% |
 | memcopy (KA, 1:1) | 3984 | 81% | 92% | 100% |
 | diffusion (KA) | 3346 | 68% | 78% | 84% |
@@ -263,7 +267,7 @@ julia> include("scripts/CahnHilliard2D_KA.jl")   # or scaling_test()
 
 | n | `T_eff` | of saxpy | of memcopy | ns/cell |
 |---|---|---|---|---|
-| 512 | 1249 | 28% | 31% | 0.032 |
+| 512 | 1249 GB/s | 28% | 31% | 0.032 |
 | 1024 | 3242 | 73% | 81% | 0.012 |
 | 2048 | 3230 | 72% | 81% | 0.012 |
 | 4096 | 3546 | 80% | 89% | 0.011 |
@@ -287,12 +291,10 @@ The identical scripts on the Grace CPU of the same node (36 threads, 8192², Flo
 
 | | Grace, 36 cores | GH200 | ratio |
 |---|---|---|---|
-| memcopy [2] | 398 GB/s | 3947 | 9.9× |
+| memcopy [2] | 398 GB/s | 3947 GB/s | 9.9× |
 | saxpy [3] | 391 | 4414 | 11.3× |
 | diffusion [2] | 371 | 3334 | 9.0× |
 | **Cahn-Hilliard [5]** | **321** | **3460** | **10.8×** |
-| | | | |
-| Cahn-Hilliard, % of own memcopy | 81% | 88% | |
 
 The solver sits at a similar fraction of its machine's copy rate on both — 81% on Grace CPU, 88% on Hopper GPU. What changed between them is the ceiling, not the quality of the code, which is the practical use of `T_eff`: it reports how much room is left on a single machine.
 
