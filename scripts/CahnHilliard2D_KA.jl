@@ -7,7 +7,7 @@ include(joinpath(@__DIR__, "common.jl"))
 # ---- backend: uncomment one ----
 # const backend = CPU();                      const FT = Float64  # CPU reference
 using CUDA;   const backend = CUDABackend();  const FT = Float64  # NVIDIA
-# using AMDGPU; const backend = ROCBackend();  const FT = Float64  # NVIDIA
+# using AMDGPU; const backend = ROCBackend();  const FT = Float64  # AMD GPU
 
 # no-flux (∂n = 0) through the ghost-node mirror A[0]->A[1], A[n+1]->A[n].
 # min/max make it branchless, so no warp divergence at the boundaries.
