@@ -1219,7 +1219,7 @@ CahnHilliard_ND_Chmy(N, N; backend)
 CahnHilliard_ND_Chmy(N, N, N; backend)
 ```
 
-Running this code results in the following results:
+Running this code results in the following output:
 
 |1D|2D|3D|
 |--|--|--|
