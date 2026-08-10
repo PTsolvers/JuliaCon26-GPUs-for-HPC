@@ -6,7 +6,7 @@ include(joinpath(@__DIR__, "common.jl"))
 # ---- backend: uncomment one ----
 # const backend = CPU();                        const FT = Float64  # CPU reference
 using CUDA;   const backend = CUDABackend();  const FT = Float64  # NVIDIA
-# using AMDGPU; const backend = ROCBackend();  const FT = Float64  # NVIDIA
+# using AMDGPU; const backend = ROCBackend();  const FT = Float64  # AMD GPU
 
 # no-flux (∂n = 0) ghost-node mirror -- identical to CahnHilliard2D_KA.jl
 # @propagate_inbounds to propagate `inbounds = true`.
