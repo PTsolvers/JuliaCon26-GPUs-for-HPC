@@ -24,11 +24,50 @@ This workshop makes that concrete for PDE solvers. We take one equation, Cahn-Hi
 
 The workshop concentrates on **single-device performance and portability**. Everything measured here, from the memcopy ceiling to the flat cost-per-cell across a 1024× range in problem size, is about using one GPU well and knowing when it is being used well.
 
-Multi-device parallelisation is the natural next step rather than a separate subject. [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) and [ImplicitGlobalGrid.jl](https://github.com/omlins/ImplicitGlobalGrid.jl) cover it, hiding the halo exchange behind the same stencil syntax so that a single-GPU code becomes a multi-GPU one with little change. They are left out here for time, but the weak scaling shown in Part 1 is exactly the property that carries over: a domain too large for one device is split across several at constant cost per cell. For this solver a single 144 GB GH200 holds roughly 65536² before that becomes necessary.
+Multi-device parallelisation is the natural next step. [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) and [ImplicitGlobalGrid.jl](https://github.com/omlins/ImplicitGlobalGrid.jl) cover it, hiding the halo exchange behind the same stencil syntax so that a single-GPU code becomes a multi-GPU one with little change. They are left out here for time, but the weak scaling shown in Part 1 is exactly the property that carries over: a domain too large for one device is split across several at constant cost per cell. For this solver a single 144 GB GH200 holds roughly 65536² before that becomes necessary.
 
 ## Getting started
 
-> **TODO** — access to the Otus cluster at PC2: account request, login, module setup, how to grab an H100 node, and the Julia environment to instantiate.
+For this workshop you can temporarily access free NVIDIA H100 GPU resources on the Otus cluster at the [Paderborn Center for Parallel Computing (PC2)](https://pc2.uni-paderborn.de/).
+
+### 1. Get onto a GPU node
+
+1. Go to the [PC2 workshop page](https://pc2.uni-paderborn.de/training/material/juliacon-2026) and scroll to *Workshop: Hands-on with Julia for HPC on GPUs*.
+2. Follow the link **➡️ JupyterHub GPU instance — 48 cores — 1 NVIDIA H100 GPU (44 GB slice)**. Credentials are handed out on-site.
+3. Authenticate; you land in a JupyterLab instance running on the cluster.
+4. In the JupyterLab launcher, click the **VS Code** tile. VS Code opens in a new browser tab, running on a GPU compute node.
+
+### 2. Set up Julia in VS Code
+
+1. Install the **Julia extension** from within the VS Code instance.
+2. Point the extension at the module's Julia. In a terminal, get the path:
+
+   ```bash
+   module load lang/JuliaHPC/1.12.6-foss-2025a
+   readlink -f "$(which julia)"
+   ```
+
+   Paste that absolute path into the extension's **Executable Path** setting (`julia.executablePath`), in the **Remote** scope rather than User. VS Code does not inherit the module environment on its own, so without this it will not find `julia`.
+3. Open the command palette and start a Julia REPL to confirm it works.
+
+### 3. Get the material
+
+Whether on Otus, on your own machine or on another GPU server:
+
+```bash
+git clone https://github.com/PTsolvers/JuliaCon26-GPUs-for-HPC.git
+cd JuliaCon26-GPUs-for-HPC
+julia --project=.
+```
+
+then, in the REPL:
+
+```julia
+julia> ]                      # enter package mode
+(JuliaCon26-GPUs-for-HPC) pkg> instantiate
+```
+
+You are all set. Open the README and follow along :tada:
 
 All scripts referenced below live in [`scripts/`](scripts/).
 
@@ -54,7 +93,7 @@ That run is 40 000 steps over 67 M cells:
 | Grace CPU, 36 of 72 cores | 0.125 ns | 5.6 min |
 | GH200 144G HBM3e | 0.012 ns | **31 s** |
 
-The Grace row sits on the *same node* as the GPU, so it is the like-for-like comparison: **10.8× slower**, with the same code, the same `Float64` and the same `Δmean = 1e-20`. The difference is memory bandwidth rather than arithmetic speed, quantified below.
+The Grace CPU row sits on the *same node* as the GPU, so it is the like-for-like comparison: **10.8× slower**, with the same code, the same `Float64` and the same `Δmean = 1e-20`. The difference is memory bandwidth rather than arithmetic speed, quantified below.
 
 ## The model
 
@@ -74,7 +113,7 @@ with no-flux boundaries on both `C` and `μ`, imposed by a ghost-node mirror (`A
 
 Uniform states are unstable only for `|C̄| < 1/√3 ≈ 0.577`; beyond that the mixture is metastable and separation requires nucleation. Growth also slows as `|C̄|` rises, the rate going as `(1-3C̄²)²`, so `C̄ = 0.4` takes ~3.7× longer to separate than `C̄ = 0`.
 
-**Two invariants worth asserting on.** Both are cheap, and together they catch sign errors, wrong boundary conditions and unstable timesteps:
+**Two invariants worth asserting on.** Together they catch sign errors, wrong boundary conditions and unstable timesteps:
 
 - free energy `F = ∫[(C²-1)²/4 + γ/2|∇C|²]` decreases monotonically
 - `mean(C)` is constant — machine zero in Float64, ~1e-11 in Float32
@@ -109,7 +148,7 @@ function update_concentration!(C, μ, dtD)
 end
 ```
 
-The `min`/`max` in `lap` apply the ghost-node mirror without branching. Only two arrays are ever written: `μ` has to be a real array because pass 2 reads its *neighbours*, while `∇²C`, the fluxes `qCx`, `qCy` and the other intermediates collapse into registers, since
+The `min`/`max` in `lap` apply the ghost-node mirror without branching. Only two arrays are written: `μ` has to be a real array because pass 2 reads its *neighbours*, while `∇²C`, the fluxes `qCx`, `qCy` and the other intermediates collapse into registers, since
 
 ```
 ∂C/∂t = D ∇²μ = -D ∇·q        with     q = -∇μ
@@ -117,13 +156,13 @@ The `min`/`max` in `lap` apply the ghost-node mirror without branching. Only two
 
 i.e. the flux divergence *is* the Laplacian of `μ`.
 
-This runs fine at 512². Reaching 8192² takes two further things: scaling that keeps the constants well-conditioned, and hardware that can move the memory. Both are the subject of the rest of Part 1.
+This runs fine at 512². Reaching 8192² takes two further things: scaling that keeps the constants well-conditioned, and hardware that can move the memory fast. Both are the subject of the rest of Part 1.
 
 ## Scaling
 
-**Grid units (`dx = dy = 1`).** The common alternative is to fix a unit box, `lx = ly = 1`. At `nx = 128` that gives `γ ≈ 1.1e-4`, `dt ≈ 4.6e-7` and `1/dx² ≈ 1.6e4`: eleven orders of magnitude between the smallest and largest constant, and all of them move when `nx` changes. In grid units the same three are `γ = 2`, `dt = 7e-3`, `D = 1`, all O(1) and independent of `nx`. That is also what makes a Float32-only backend safe. Physical units for a cell size `L` follow from `γ_phys = γ·L²`, `t_phys = t·L²/D`, `w_phys = w·L`.
+**Grid units (`dx = dy = 1`).** The common alternative is to fix a unit box, `lx = ly = 1`. At `nx = 128` that gives `γ ≈ 1.1e-4`, `dt ≈ 4.6e-7` and `1/dx² ≈ 1.6e4`: eleven orders of magnitude between the smallest and largest constant, and all of them move when `nx` changes. In grid units the same three are `γ = 2`, `dt = 7e-3`, `D = 1`, all O(1) and independent of `nx`. That is also what makes a Float32-only backend (like Metal) safe. Physical units for a cell size `L` follow from `γ_phys = γ·L²`, `t_phys = t·L²/D`, `w_phys = w·L`.
 
-A useful consequence: the interface width `w = √(8γ)` and the fastest-growing wavelength `Λ = 2π√(2γ)` are both measured *in cells* and independent of `n`. Growing `n` therefore enlarges the domain at fixed resolution-per-feature, and **`dt` does not shrink**. That is weak scaling, and it is what makes 8192² affordable. Resolving the interface better instead means raising `wcell`, at a cost of `nt ∝ wcell⁴`.
+A useful consequence: the interface width `w = √(8γ)` and the fastest-growing wavelength `Λ = 2π√(2γ)` are both measured *in cells* and independent of `nx, ny`. Growing `nx, ny` therefore enlarges the domain at fixed resolution-per-feature, and **`dt` does not shrink**. That is weak scaling, and it is what makes 8192² affordable. Resolving the interface better instead means raising `wcell`, at a cost of `nt ∝ wcell⁴`.
 
 ## Memory bound, and what to measure
 
@@ -131,7 +170,7 @@ A 5-point Laplacian does a handful of flops per cell and moves several arrays. C
 
 Wall time is what ultimately matters and it is the right number to report for a production run. What it does not reveal is how well the hardware is being used, or whether a different implementation would do better: a poor kernel on a fast machine and a good one on a slow machine can take the same time. That needs a second number, measuring the implementation against what the hardware can deliver.
 
-The two measurements above make the point. Grace sustains 321 GB/s on this problem and the GH200 3460 GB/s, a ratio of **10.8**; the wall-time ratio was also **10.8×**. To two digits the speedup is the bandwidth ratio.
+The two measurements above make the point. Grace CPU sustains 321 GB/s on this problem and the GH200 3460 GB/s, a ratio of **10.8**; the wall-time ratio was also **10.8×**. To two digits the speedup is the bandwidth ratio.
 
 The CPU thread sweep shows the same from the other side, for Cahn-Hilliard at 8192² on Grace:
 
@@ -188,7 +227,7 @@ All four below at 16384², so they are directly comparable:
 | memcopy (KA, 1:1) | 3984 | 81% | 92% | 100% |
 | diffusion (KA) | 3346 | 68% | 78% | 84% |
 
-Percentages below are against **KA memcopy** unless stated otherwise: it is written with the same tools as the solver, so it is the like-for-like reference. The other columns answer different questions — `copyto!` for what the abstraction costs (8%), peak for what the silicon could do in principle.
+Percentages below are against **KA memcopy** unless stated otherwise: it is written with the same tools as the solver, so it is the reference. The other columns answer different questions — `copyto!` for what the abstraction costs (8%), peak for what the hardware could do in principle.
 
 Only the bottom of the size sweep measures bandwidth. 512² is launch-bound at a third of the rate; 1024² saxpy reports 5055 GB/s, above hardware peak, because the working set is L2-resident; 2048² sits in the L2-boundary dip. From 8192² up the numbers are flat to 1%.
 
@@ -216,11 +255,11 @@ Two Laplacians and two passes, at **~85% of memcopy**. With the ceiling measured
 
 The last column is worth a look as well. From 1024² up the cost per cell is flat at ~0.012 ns across a **1024× range in problem size**, 16 MB to 16 GB of arrays. This is the weak scaling from earlier: a bigger run is a bigger domain at constant cost per cell, not a longer one. `Δmean` stays at ~1e-20 throughout. Only 512² falls off, being too little work to fill the device. Repeat runs agree to within 1.8% at every size.
 
-The remaining ~15% is not waste, and `ncu` shows why. At 8192² the stencil moves *exactly* the DRAM traffic memcopy does, 536.9 MB read and 517 MB written. The halo re-reads never reach memory: a neighbour was already fetched for the adjacent thread and is served from L2. So the 2-array charge in `T_eff` is not an approximation here, it is what the hardware actually does.
+The remaining ~15% is not waste, and a profiler like `ncu` can show why. At 8192² the stencil moves *exactly* the DRAM traffic memcopy does, 536.9 MB read and 517 MB written. The halo re-reads never reach memory: a neighbour was already fetched for the adjacent thread and is served from L2. So the 2-array charge in `T_eff` is not an approximation here, it is what the hardware actually does.
 
 What differs is the number of load *requests*. Each stencil thread issues five loads where memcopy issues one, and `ncu` counts 5.25× the L1 load sectors (88.1 M against 16.8 M). Those extra loads are nearly free in bytes but each still occupies the load/store unit for a cycle, so the LSU pipeline saturates before the memory bus does.
 
-The stencil is therefore request-bound rather than bandwidth-bound. Cache blocking targets DRAM traffic, which is already at its minimum, so it would change nothing. Reducing the request *count* is what would help: having each thread compute several output points reuses loaded values in registers and cuts loads per output. That is untested here, and it trades against register pressure.
+The stencil is possibly request-bound rather than bandwidth-bound. Cache blocking targets DRAM traffic, which is already at its minimum, so it would change nothing. Reducing the request *count* is what would help: having each thread compute several output points reuses loaded values in registers and cuts loads per output. That is untested here, and it trades against register pressure.
 
 ## Same code, two machines
 
@@ -235,7 +274,7 @@ The identical scripts on the Grace CPU of the same node (36 threads, 8192², Flo
 | | | | |
 | Cahn-Hilliard, % of own memcopy | 81% | 88% | |
 
-The solver sits at a similar fraction of its machine's copy rate on both — 81% on Grace, 88% on Hopper. What changed between them is the ceiling, not the quality of the code, which is the practical use of `T_eff`: it reports how much room is left on a single machine, without needing a second one for comparison.
+The solver sits at a similar fraction of its machine's copy rate on both — 81% on Grace CPU, 88% on Hopper GPU. What changed between them is the ceiling, not the quality of the code, which is the practical use of `T_eff`: it reports how much room is left on a single machine.
 
 One asymmetry: on the GPU saxpy is 12% above memcopy, on Grace 2% below it. The bus-turnaround advantage of a 2:1 read:write ratio is a GPU effect that a CPU's caches and prefetchers largely hide, so saxpy is the better reference on GPUs, memcopy on Grace.
 
@@ -265,8 +304,6 @@ The streaming kernels reproduce to ±0.1%. The stencil is more sensitive, landin
 - **Burst ≠ sustained.** A 50-launch burst runs ~11% faster than a multi-second loop.
 - **Small `n` is not a bandwidth measurement.** ≤1024² is L2-resident and can report above hardware peak, ≤512² is launch-bound, 2048² sits in the L2-boundary dip. 4096² is still 5% low.
 - **`@inbounds` does not cross a function call.** `@kernel inbounds = true` covers only the kernel body, so `lap` needs `Base.@propagate_inbounds`. Worth 9%, and invisible in every memory metric; the only tell is registers/thread.
-
-Tried on CUDA without benefit: workgroup shape, `@Const`, hoisting loads, interior-only guards. Numbers in `CLAUDE.md`.
 
 ## Running on an Apple laptop
 
