@@ -32,7 +32,7 @@ ffun(x) = 1.0
 
 function diffusion1D_PETSc_dmda(; n = 100, do_visu = true)
     petsclib = PETSc.getlib(; PetscScalar = Float64, PetscInt = Int64)
-    PETSc.initialize(petsclib)
+    PETSc.initialize(petsclib, log_view=false)  # set it to true to see PETSc's internal timings 
     comm = MPI.COMM_WORLD
     rank = MPI.Comm_rank(comm); nranks = MPI.Comm_size(comm)
     opts = PETSc.parse_options(ARGS)
