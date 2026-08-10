@@ -39,6 +39,11 @@ function boundary_conditions(q, ∇C, ::Val{N}) where {N}
     end
 end
 
+function subs_bc(expr, kvs...)
+    rules = map(Chmy.SubsRule, kvs)
+    return simplify(Prewalk(Chain(rules))(expr))
+end
+
 function make_expressions(expr::STerm, ::Tuple{}, kvs::Tuple)
     rules = map(Chmy.SubsRule, kvs)
     return ((simplify(Prewalk(Chain(rules))(expr)),),)
