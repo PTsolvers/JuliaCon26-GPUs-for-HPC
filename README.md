@@ -949,8 +949,258 @@ So in conclusion, `T_eff` is a good metric to know that you are using clever cod
 
 *This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl) with source file:  [Part2_KA_Literate_source.jl](https://github.com/PTsolvers/JuliaCon26-GPUs-for-HPC/blob/main/scripts/Part2_KA_literate_source.jl)*
 
-# Part 4: Using PETSc.jl
+# Part 3: Using Chmy.jl
 
+> [!IMPORTANT]
+> For this part, you need to add the `iu/v0.2` branch of Chmy.jl:
+>
+> ```julia
+> (JuliaCon26-GPUs-for-HPC) pkg> add Chmy#iu/v0.2
+> ```
+
+In this part of the workshop, we will solve the Cahn-Hilliard equation using Chmy.jl, a package for constructing discrete differential operators from high-level mathematical descriptions. The main goal of this exercise is to show how the same high-level representation can generate PDE solver code for one, two, or three dimensions.
+
+## What is Chmy.jl?
+
+[Chmy.jl](https://github.com/PTsolvers/Chmy.jl) is a Julia package for finite-difference computations on structured grids. Its symbolic layer can construct discrete differential operators, including tensor-valued expressions and operators on staggered grids.
+
+> [!WARNING]
+> Chmy.jl v0.2 is under active development. Its documentation is still limited, and breaking changes are expected. Stay tuned for updates and a release!
+
+## Heat equation
+
+Before solving the Cahn-Hilliard equation, let's explore Chmy.jl with the simpler one-dimensional heat equation. We will first write a finite-difference expression directly, then use finite-difference operators, and finally use dimension-independent tensor operations.
+
+### Create a symbolic expression
+
+The first step is to create a symbolic representation of the scalar field in the heat equation:
+
+```math
+\frac{\partial C}{\partial t} = \frac{\partial^2 C}{\partial x^2}
+```
+
+We also need a symbolic grid index to represent array access; Chmy provides `SIndex` for this purpose. The following second-difference stencil represents the one-dimensional Laplacian on a grid with unit spacing:
+
+```julia
+using Chmy
+
+@scalars C
+# grid index
+const 𝑖 = SIndex(1)
+# Laplacian
+ΔC = C[𝑖-1] - 2 * C[𝑖] + C[𝑖+1]
+```
+
+### Bind data
+
+The expression `ΔC` is a symbolic, or *lazy*, object: it describes a computation but does not yet read any data or produce a numerical result. Before evaluating it, we must bind an array to the symbolic variable `C`:
+
+```julia
+bnd = Binding(C => rand(3))
+```
+
+### Execute expression
+
+We can then evaluate the expression at a particular grid index. Here, index `2` selects the centre of the three-element array:
+
+```julia
+compute(ΔC, bnd, 2)
+```
+
+Finally, let's write a complete one-dimensional diffusion solver. This example uses an explicit Euler update with a time-step factor of `0.1`; because the loop updates only interior points, the two endpoint values remain fixed.
+
+```julia
+using CairoMakie
+
+function solve_heat(Cⁿ, nt, r)
+    Cⁿ⁺¹ = copy(Cⁿ)
+    for _ in 1:nt
+        bnd = Binding(C => Cⁿ)
+        for ix in 2:length(Cⁿ)-1
+            Cⁿ⁺¹[ix] = Cⁿ[ix] + r * compute(ΔC, bnd, ix)
+        end
+        Cⁿ⁺¹, Cⁿ = Cⁿ, Cⁿ⁺¹
+    end
+    return Cⁿ
+end
+
+# Allocate and plot the initial state
+Cⁿ = rand(100)
+fig, ax, plt = lines(Cⁿ)
+
+# Advance and plot the final state
+Cⁿ = solve_heat(Cⁿ, 100, 0.1)
+lines!(ax, Cⁿ)
+display(fig)
+```
+
+## Finite differences
+
+Chmy.jl provides several primitives for common finite-difference schemes:
+
+```julia
+D = CentralDifference()
+D(C)[𝑖]
+```
+
+Many numerical methods use *staggered grids*, on which different variables occupy locations shifted relative to one another. Chmy represents both grid points and the segments between them:
+
+```julia
+D = StaggeredCentralDifference()
+
+const 𝓅 = Point()
+const 𝓈 = Segment()
+
+D(C)[𝓅][𝑖]
+```
+
+To solve PDEs in two or three dimensions, we need partial derivatives along individual coordinate directions. Here, the second argument to `∂` selects the coordinate direction:
+
+```julia
+∂ = PartialDerivative(D)
+const 𝑗 = SIndex(2)
+
+∂(C, 1)[𝓅, 𝓈][𝑖, 𝑗]
+∂(C, 2)[𝓈, 𝓅][𝑖, 𝑗]
+
+ΔC = (∂(∂(C, 1), 1) + ∂(∂(C, 2), 2))[𝓈, 𝓈][𝑖, 𝑗]
+```
+
+Chmy is not a computer algebra system like [Symbolics.jl](https://github.com/JuliaSymbolics/Symbolics.jl), so it does not automatically apply general algebraic rules while constructing an expression. Some simplification is nevertheless important—for example, to eliminate array reads whose contributions cancel. Chmy provides a basic simplification pass for this purpose:
+
+```julia
+simplify(expr)
+```
+
+## Tensor operations
+
+To write genuinely dimension-independent code, we can use Chmy's vector and tensor calculus operators. The following expression represents the Laplacian as the divergence of a gradient:
+
+```julia
+grad = Gradient(D)
+divg = Divergence(D)
+
+expr = divg(grad(C))[𝓈, 𝓈][𝑖, 𝑗]
+```
+
+## Symbolic substitutions
+
+Parts of a symbolic expression can be replaced through substitution. This is particularly useful for imposing boundary conditions, where selected field values or derivatives must be replaced by prescribed values:
+
+```julia
+subs(expr, grad(C)[1][𝓅, 𝓈][𝑖, 𝑗] => SLiteral(0)) |> simplify
+subs(expr, C[𝓈, 𝓈][𝑖+1, 𝑗]        => SLiteral(0)) |> simplify
+```
+
+## Creating an expression for the Cahn-Hilliard equation
+
+We can now construct a finite-difference scheme for the Cahn-Hilliard equation. We first define the chemical potential `μ`, then the flux `q`, and finally the rate of change of the concentration:
+
+```julia
+# physics
+@scalars @uniform(γ) C
+# operators
+divg = Divergence(StaggeredCentralDifference())
+grad = Gradient(StaggeredCentralDifference())
+# equations
+∇C    = grad(C)
+μ     = C^3 - C - γ * divg(∇C)
+q     = -grad(μ)
+∂C_∂t = -divg(q)
+```
+
+The `@uniform` annotation marks `γ` as a spatially uniform quantity, so it can be bound to a scalar rather than an array.
+
+Only `C` is a stored, prognostic variable; `∇C`, `μ`, and `q` are symbolic expressions. When Chmy evaluates `∂C_∂t`, it computes `μ` on the fly at each grid point instead of storing it in a separate array. Compared with the KernelAbstractions-based implementation in Part 2, this fused approach reduces global memory traffic at the cost of recomputing some intermediate values. We will see the performance implications below.
+
+## Visualising the stencil
+
+The `nonuniforms` function lets us inspect the locations and array accesses that make up the stencil on the staggered grid:
+
+```julia
+expr = simplify(∂C_∂t[𝓈, 𝓈][𝑖, 𝑗])
+nonuniforms(expr)
+```
+
+## Boundary conditions
+
+Because the Cahn-Hilliard equation is fourth order in space, it requires two boundary conditions at each wall. As in the previous parts, we impose a no-flux condition and a homogeneous Neumann condition on the concentration `C`:
+
+```math
+\boldsymbol{q}\cdot\boldsymbol{n} = 0,\quad \boldsymbol{\nabla} C\cdot\boldsymbol{n} = 0 \quad \text{at} \quad \Gamma
+```
+
+In Chmy, we impose these conditions by creating specialised expressions for grid points at or near each boundary. The following substitutions construct the expression for the left boundary:
+
+```julia
+expr = normalize(∂C_∂t[𝓈, 𝓈][𝑖, 𝑗])
+bc_q = normalize(q[1][𝓅, 𝓈][𝑖, 𝑗]) => SLiteral(0)
+bc_c = (normalize(∇C[1][𝓅, 𝓈][𝑖, 𝑗-1]) => SLiteral(0),
+        normalize(∇C[1][𝓅, 𝓈][𝑖, 𝑗])   => SLiteral(0),
+        normalize(∇C[1][𝓅, 𝓈][𝑖, 𝑗+1]) => SLiteral(0))
+subs_bc(expr, bc_q, bc_c...)
+```
+
+> [!IMPORTANT]
+> The `normalize` function is defined in [chmy_helpers.jl](scripts/chmy_helpers.jl). It simplifies only grid indices, ensuring that the boundary-condition expressions match the corresponding subexpressions in the differential operator.
+>
+> The `subs_bc` function is also defined in [chmy_helpers.jl](scripts/chmy_helpers.jl). It is similar to `subs`, but uses slightly different subexpression matching to apply the boundary conditions correctly, then simplifies the result.
+
+Notice that we must replace three concentration gradients next to the wall. Inspecting the stencil with `nonuniforms` shows where each of these gradients enters the fourth-order operator.
+
+For the second grid point from the left, we must also apply a boundary condition. A zero-flux substitution is no longer needed there, but the zero concentration gradient is still part of the stencil:
+
+```julia
+bc_c2 = (normalize(∇C[1][𝓅, 𝓈][𝑖-1, 𝑗-1]) => SLiteral(0),
+         normalize(∇C[1][𝓅, 𝓈][𝑖-1, 𝑗])   => SLiteral(0),
+         normalize(∇C[1][𝓅, 𝓈][𝑖-1, 𝑗+1]) => SLiteral(0))
+subs_bc(expr, bc_c2...)
+```
+
+Similarly, we can create expressions for the other boundaries.
+
+### What to do at the corners?
+
+At a corner, we simply combine the boundary conditions from its adjacent walls.
+
+This leads to a combinatorial increase in the number of expressions. Along each coordinate direction there are five cases: the interior, two layers near the lower boundary, and two layers near the upper boundary. We therefore need 25 expressions in two dimensions and 125 in three dimensions. Julia makes it straightforward to automate the generation of these expressions in `n` dimensions, although the additional specialisations increase compilation time.
+
+## Writing a single KA kernel to execute Chmy expressions
+
+All the physics, including the boundary conditions, is now encapsulated in Chmy expressions. A single KernelAbstractions kernel can evaluate any one of these expressions over a rectangular range of grid indices:
+
+```julia
+using KernelAbstractions
+
+@kernel function update_kernel!(Cⁿ⁺¹, Cⁿ, r, expr, bnd, offset)
+    I = @index(Global, Cartesian)
+    J = I + offset
+    Cⁿ⁺¹[J] = Cⁿ[J] + r * compute(expr, bnd, Tuple(J)...)
+end
+```
+
+For example, we can launch the kernel over the interior region as follows. Kernel indices start at one, so `offset` shifts the first kernel index to the first index in `grid`. The binding uses `C[𝓈, 𝓈]` because the expression places `C` at cell centres:
+
+```julia
+update! = update_kernel!(backend, 256)
+grid    = (3:(nx-2), 3:(ny-2))
+offset  = CartesianIndex(map(r -> first(r) - 1, grid))
+ndrange = map(length, grid)
+bnd     = Binding(γ => 2.0, C[𝓈, 𝓈] => Cⁿ)
+update!(Cⁿ⁺¹, Cⁿ, r, expr, bnd, offset; ndrange)
+```
+
+## Dimension-independent code
+
+A single implementation can work in one, two, or three dimensions. Because Chmy's tensor expressions are dimension-independent, generating the interior expressions is straightforward. Boundary conditions require more care because the code must generate and execute every combination of interior, face, edge, and corner cases.
+
+The implementations in [CahnHilliard_nD_Chmy.jl](scripts/CahnHilliard_nD_Chmy.jl) and [chmy_helpers.jl](scripts/chmy_helpers.jl) are fully dimension-independent. They use multiple dispatch and recursion to specialise the solver for each case. This general implementation is necessarily more involved, which is why the tutorial first develops the two-dimensional case explicitly.
+
+## Testing performance
+
+We measure the effective memory throughput in the same way as in Part 1. For this metric, each iteration of the Chmy-based code counts one full-array read and one full-array write, for two global-memory accesses in total. In contrast, the two-field KernelAbstractions implementation counts five full-array accesses per iteration.
+
+# Part 4: Using PETSc.jl
 
 > [!IMPORTANT]
 > **On the Otus cluster (PC2, Paderborn), set up the environment first:**
