@@ -18,13 +18,17 @@ Hands-on with Julia for HPC on GPUs workshop at [JuliaCon 2026](https://juliacon
 
 Julia offers the best of both worlds: high-level expressiveness with low-level performance, so modern accelerators can be targeted without writing hardware-specific code.
 
-This workshop makes that concrete for PDE solvers. We take one equation, Cahn-Hilliard in 2D, and carry it from a plain Julia loop to a GPU kernel running close to the memory bandwidth of the device, measuring at every step. Along the way: [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) for portable kernels, [Chmy.jl (v0.2)](https://github.com/PTsolvers/Chmy.jl/tree/iu/v0.2) for finite-difference discretisations, [PETSc.jl](https://github.com/JuliaParallel/PETSc.jl) for implicit and CPU-parallel solves, and [Reactant.jl](https://github.com/EnzymeAD/Reactant.jl) if time allows.
+This workshop makes that concrete for PDE solvers. We take one equation, Cahn-Hilliard in 2D, and carry it from a plain Julia loop to a GPU kernel running close to the memory bandwidth of the device, measuring at every step. Along the way: [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) for portable kernels, [Chmy.jl (v0.2)](https://github.com/PTsolvers/Chmy.jl/tree/iu/v0.2) for finite-difference discretisations, [PETSc.jl](https://github.com/JuliaParallel/PETSc.jl) for implicit and CPU-parallel solves.
 
 ### Scope
 
 The workshop concentrates on **single-device performance and portability**. Everything measured here, from the memcopy ceiling to the flat cost-per-cell across a 1024× range in problem size, is about using one GPU well and knowing when it is being used well.
 
-Multi-device parallelisation is the natural next step. [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) and [ImplicitGlobalGrid.jl](https://github.com/omlins/ImplicitGlobalGrid.jl) cover it, hiding the halo exchange behind the same stencil syntax so that a single-GPU code becomes a multi-GPU one with little change. They are left out here for time, but the weak scaling shown in Part 1 is exactly the property that carries over: a domain too large for one device is split across several at constant cost per cell. For this solver a single 144 GB GH200 holds roughly 65536² before that becomes necessary.
+Two directions extend it, both left out here for time.
+
+**More devices.** [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) and [ImplicitGlobalGrid.jl](https://github.com/omlins/ImplicitGlobalGrid.jl) hide the halo exchange behind the same stencil syntax, so a single-GPU code becomes a multi-GPU one with little change. The weak scaling shown in Part 1 is exactly the property that carries over: a domain too large for one device is split across several at constant cost per cell. For this solver a single 144 GB GH200 holds roughly 65536² before that becomes necessary.
+
+**More kinds of device.** [Reactant.jl](https://github.com/EnzymeAD/Reactant.jl) takes a different route to portability: instead of emitting a kernel per backend, it traces Julia code to MLIR/StableHLO and hands it to XLA, which compiles for CPU, GPU and **TPU**. That is the one accelerator class the KernelAbstractions path here cannot reach.
 
 ## Getting started
 
@@ -77,7 +81,6 @@ All scripts referenced below live in [`scripts/`](scripts/).
 2. [**Part 2: KernelAbstractions**](#part-2-kernelabstractions) — portable kernels, and composing with the wider ecosystem (e.g. a different timestepper instead of explicit Euler)
 3. [**Part 3: Using Chmy.jl**](#part-3-using-chmyjl) — the same equations, expressed at a higher level using dimensions-agnostic DSL
 4. [**Part 4: Using PETSc.jl**](#part-4-using-petscjl) — the same equations again, via [PETSc](https://petsc.org/) but on (parallel) CPUs
-5. [**Part 5: Using Reactant.jl**](#part-5-using-reactantjl) — if time permits
 
 # Part 1: Performance basics
 
@@ -1345,3 +1348,9 @@ Note that **the pre-built PETSc_jll binaries currently ship without GPU support*
 # Further reading
 
 - [PDEs on GPUs](https://pde-on-gpu.vaw.ethz.ch) — the full course this material condenses
+
+# Acknowledgements
+
+We thank the [Paderborn Center for Parallel Computing (PC2)](https://pc2.uni-paderborn.de/) for providing access to the Otus cluster and its NVIDIA H100 GPUs for this workshop.
+
+<a href="https://pc2.uni-paderborn.de/"><img src="assets/Logo_PC2.png" width=300px></a>
