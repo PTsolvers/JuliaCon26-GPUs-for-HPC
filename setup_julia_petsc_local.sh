@@ -20,10 +20,18 @@ unset $(env | grep -oE '^SLURM_PMIX?_?[A-Za-z0-9_]*' | tr '\n' ' ')
 export MPIR_CVAR_PMI_VERSION=2
 
 julia --project=. -e '
+    using Pkg
+    Pkg.add("MPIPreferences")
     using MPIPreferences
     MPIPreferences.use_jll_binary("MPICH_jll")
-    Pkg.instantiate()
+'
 
+julia --project=. -e '
+    using Pkg
+    Pkg.add("MPI")
     using MPI
     MPI.install_mpiexecjl(; force=true)
+
+    Pkg.instantiate()
+    using PETSc
 '

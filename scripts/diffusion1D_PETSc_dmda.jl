@@ -111,4 +111,4 @@ function diffusion1D_PETSc_dmda(; n = 100, do_visu = true)
     return nothing
 end
 
-diffusion1D_PETSc_dmda()
+diffusion1D_PETSc_dmda(do_visu=true)

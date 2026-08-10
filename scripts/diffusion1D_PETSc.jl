@@ -71,4 +71,4 @@ function diffusion1D_PETSc(; n = 100, do_visu = true)
     return x, uvec
 end
 
-x, u = diffusion1D_PETSc()
+x, u = diffusion1D_PETSc(do_visu=true)  # set to false to skip the plot
