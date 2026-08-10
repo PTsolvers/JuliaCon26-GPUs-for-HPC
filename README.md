@@ -80,7 +80,8 @@ julia> ]                      # enter package mode
 
 You are all set. Open the README and follow along :tada:
 
-All scripts referenced below live in [`scripts/`](scripts/).
+> [!NOTE]
+> All scripts referenced below live in [`scripts/`](scripts/).
 
 ## Workshop outline
 
@@ -123,10 +124,13 @@ with no-flux boundaries on both `C` and `μ`, imposed by a ghost-node mirror (`A
 
 Uniform states are unstable only for `|C̄| < 1/√3 ≈ 0.577`; beyond that the mixture is metastable and separation requires nucleation. Growth also slows as `|C̄|` rises, the rate going as `(1-3C̄²)²`, so `C̄ = 0.4` takes ~3.7× longer to separate than `C̄ = 0`.
 
-**Two invariants worth asserting on.** Together they catch sign errors, wrong boundary conditions and unstable timesteps:
-
-- free energy `F = ∫[(C²-1)²/4 + γ/2|∇C|²]` decreases monotonically
-- `mean(C)` is constant — machine zero in Float64, ~1e-11 in Float32
+> [!TIP]
+> **Two invariants worth asserting on.** Together they catch sign errors, wrong boundary conditions and unstable timesteps:
+>
+> - free energy `F = ∫[(C²-1)²/4 + γ/2|∇C|²]` decreases monotonically
+> - `mean(C)` is constant — machine zero in Float64, ~1e-11 in Float32
+>
+> Every script prints both. If a change to a kernel leaves them intact, the physics survived it.
 
 ## A first implementation
 
@@ -202,13 +206,16 @@ memcopy    A = B              -> 2 arrays (1 read  + 1 write)
 saxpy      A = B + s*C        -> 3 arrays (2 reads + 1 write)
 diffusion  C2 = C + dt·D·∇²C  -> 2 arrays (1 read  + 1 write)
 Cahn-Hilliard, per step       -> 5 arrays (read C, write μ | read μ, read C, write C)
-
-T_eff = n_arrays · nx·ny·sizeof(eltype) / t_it
 ```
 
-`T_eff` assumes *perfect* caching of stencil halos, so it charges only the minimum traffic. A kernel reaching the memcopy rate is doing about as well as the hardware allows.
+> [!IMPORTANT]
+> **Effective memory throughput**
+> ```
+> T_eff = n_arrays · nx·ny·sizeof(eltype) / t_it
+> ```
+> Count only the arrays a kernel *must* move, assuming perfect caching of stencil halos. `T_eff` is therefore a lower bound on the traffic, and a kernel reaching the measured memcopy rate is doing about as well as the hardware allows. This is the number reported by every script in the workshop.
 
-## Step 1 — measure the ceiling
+## Step 1: measure the ceiling
 
 [`memcopy2D_KA.jl`](scripts/memcopy2D_KA.jl) runs memcopy, saxpy and diffusion (Laplacian) across resolutions:
 
@@ -239,13 +246,16 @@ All four below at 16384², so they are directly comparable:
 
 Percentages below are against **KA memcopy** unless stated otherwise: it is written with the same tools as the solver, so it is the reference. The other columns answer different questions — `copyto!` for what the abstraction costs (8%), peak for what the hardware could do in principle.
 
+> [!WARNING]
+> **Small grids do not measure bandwidth.** Numbers below ~4096² say more about launch overhead and cache residency than about the memory system, and can exceed hardware peak. Always report the largest size that fits.
+
 Only the bottom of the size sweep measures bandwidth. 512² is launch-bound at a third of the rate; 1024² saxpy reports 5055 GB/s, above hardware peak, because the working set is L2-resident; 2048² sits in the L2-boundary dip. From 8192² up the numbers are flat to 1%.
 
 A 2:1 read:write ratio also beats any 1:1 copy: saxpy is 11% above memcopy and 3% above the vendor copy, since it costs fewer DRAM bus turnarounds per byte. This is the same effect that puts STREAM Triad above STREAM Copy on most GPUs, and a reminder that the achievable rate depends on the access pattern as well as the hardware.
 
 Diffusion, one Laplacian on top of a copy, holds **82–85% of memcopy** at every converged size. The added flops are essentially free; the cost is the stencil's halo traffic.
 
-## Step 2 — Cahn-Hilliard
+## Step 2: Cahn-Hilliard
 
 ```julia
 julia> include("scripts/CahnHilliard2D_KA.jl")   # or scaling_test()
