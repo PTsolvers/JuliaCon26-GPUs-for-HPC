@@ -1415,7 +1415,7 @@ Useful options to know:
 
 ### Multigrid
 
-Refine the grid and the picture becomes sharper. The number to watch is the **KSP iteration count as a function of `n`** — it says whether a method will still work when the problem gets bigger, and unlike a timing it is immune to what else the machine is doing:
+Refine the grid and the picture becomes sharper. The number to watch is the **KSP iteration count as a function of `n`** — it says whether a method will still work when the problem gets bigger, and unlike a timing it is immune to what else the machine is doing (see below on how to run the `mg` examples):
 
 | n | `-pc_type jacobi` | `-pc_type gamg` | `-pc_type mg` (Galerkin) |
 |---|---|---|---|
@@ -1442,14 +1442,14 @@ The two multigrid flavours differ in where the hierarchy comes from:
     -mg_coarse_pc_type redundant -mg_coarse_redundant_pc_type lu
 ```
 
-Geometric multigrid is the stronger of the two here because the DMDA already knows the grid hierarchy — it does not have to guess one from the matrix. `-pc_mg_galerkin both` is what makes it convenient: without it, PETSc would ask you to supply a freshly discretised operator on every level via a callback, whereas Galerkin builds them from the fine matrix we already assembled (so the code is slightly more complex).
+Geometric multigrid is the stronger of the two here because the DMDA already knows the grid hierarchy — it does not have to guess one from the matrix. `-pc_mg_galerkin both` is what makes it convenient: without it, PETSc would ask you to supply a freshly discretised operator on every level via a callback, whereas Galerkin builds them from the fine matrix we already assembled (so the code is slightly less complex). See the PETSc.jl package for exmples with purely geometric multigrid.
 
 **One trap worth knowing.** Dirichlet boundaries are often imposed with an identity row (`A[i,i] = 1`). With a 100× contrast in `k`, that row is ~100× smaller in value than its neighbours, and Galerkin coarsening inherits the mismatch. That's no good for convergence. Scaling the boundary rows to match the interior — `A[i,i] = 2k(x_i)`, restores a clean 2 iterations at every level. Badly scaled rows are invisible to a direct solver and fatal to multigrid.
 
 ## Customizing and timing runs
 
 
-`PETSc.initialize(petsclib, log_view = true)` (or `-log_view`) turns on PETSc's profiler. At the end of the run it prints a table of every operation — `KSPSolve`, `MatMult`, `PCSetUp`, `VecScatterBegin` — with call counts, time, flop rates and MPI message volumes.
+`PETSc.initialize(petsclib, log_view = true)` turns on PETSc's profiler. At the end of the run it prints a table of every operation — `KSPSolve`, `MatMult`, `PCSetUp`, `VecScatterBegin` — with call counts, time, flop rates and MPI message volumes.
 
 This is the right tool for "where is the time going", including on large parallel HPC machines.
 
