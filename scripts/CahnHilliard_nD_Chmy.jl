@@ -50,7 +50,7 @@ function solve!(Cⁿ⁺¹, Cⁿ, nt, γ, C, exprs, params, do_visu, nvis)
     return
 end
 
-function CahnHilliardND_Chmy(dims::Vararg{Int,N}; do_visu=true, backend=CPU(), nt=40_000, nvis=1000) where {N}
+function CahnHilliard_ND_Chmy(dims::Vararg{Int,N}; do_visu=true, backend=CPU(), nt=40_000, nvis=1000) where {N}
     # parameters
     params = (C̄=0.0, ampl=0.02, γ=1.0)
     # physics
@@ -80,4 +80,4 @@ function CahnHilliardND_Chmy(dims::Vararg{Int,N}; do_visu=true, backend=CPU(), n
     return
 end
 
-CahnHilliardND_Chmy(64, 64, 64; do_visu=true, backend=CPU(), nt=50_000)
+CahnHilliard_ND_Chmy(512, 512; do_visu=true, backend=CPU(), nt=50_000)
