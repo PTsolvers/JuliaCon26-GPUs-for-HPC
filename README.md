@@ -244,8 +244,8 @@ All four below at 16384², so they are directly comparable:
 | | `T_eff` | of peak | of `copyto!` | of memcopy |
 |---|---|---|---|---|
 | `copyto!` (vendor, 1:1) | 4308 GB/s | 88% | 100% | 108% |
-| saxpy (KA, 2:1) | 4433 | 90% | 103% | 111% |
 | memcopy (KA, 1:1) | 3984 | 81% | 92% | 100% |
+| saxpy (KA, 2:1) | 4433 | 90% | 103% | 111% |
 | diffusion (KA) | 3346 | 68% | 78% | 84% |
 
 Percentages below are against **KA memcopy** unless stated otherwise: it is written with the same tools as the solver, so it is the reference. The other columns answer different questions — `copyto!` for what the abstraction costs (8%), peak for what the hardware could do in principle.
